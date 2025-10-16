@@ -4856,6 +4856,38 @@ catch(Exception $e) {
 				$curr_settings[$_POST['settingname']] = 1;
 				update_option('w3exwabe_settings',$curr_settings);
 			}break;
+			case 'load_taxonomy_terms':
+{
+			$taxonomy = isset($_POST['taxonomy']) ? $_POST['taxonomy'] : 'category';
+			$limit = isset($_POST['limit']) ? intval($_POST['limit']) : 1000;
+			
+			$terms_query = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT t.term_id, t.name, tt.term_taxonomy_id, tt.parent 
+					FROM {$wpdb->terms} t 
+					INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id 
+					WHERE tt.taxonomy = %s 
+					ORDER BY t.name ASC 
+					LIMIT %d",
+					$taxonomy,
+					$limit
+				)
+			);
+			
+				$arr['terms'] = $terms_query;
+				break;
+			}
+
+			case 'load_users':
+			{
+				$blogusers = get_users( array( 
+					'role__in' => array('editor', 'administrator', 'author'), 
+					'fields' => array( 'ID', 'display_name' ),
+					'number' => 1000
+				));
+				$arr['users'] = $blogusers;
+				break;
+			}
 			default:
 				break;
 		}
