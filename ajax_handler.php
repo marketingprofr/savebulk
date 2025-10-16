@@ -4856,57 +4856,6 @@ catch(Exception $e) {
 				$curr_settings[$_POST['settingname']] = 1;
 				update_option('w3exwabe_settings',$curr_settings);
 			}break;
-
-case 'load_taxonomy_terms':
-{
-    $taxonomy = isset($_POST['taxonomy']) ? sanitize_text_field($_POST['taxonomy']) : 'category';
-    $search = isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '';
-    $limit = isset($_POST['limit']) ? intval($_POST['limit']) : 20;
-    
-    if (!empty($search)) {
-        // Search query
-        $terms_query = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT t.term_id, t.name, tt.term_taxonomy_id, tt.parent 
-                FROM {$wpdb->terms} t 
-                INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id 
-                WHERE tt.taxonomy = %s AND t.name LIKE %s
-                ORDER BY t.name ASC 
-                LIMIT %d",
-                $taxonomy,
-                '%' . $wpdb->esc_like($search) . '%',
-                $limit
-            )
-        );
-    } else {
-        // No search - return top categories only
-        $terms_query = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT t.term_id, t.name, tt.term_taxonomy_id, tt.parent 
-                FROM {$wpdb->terms} t 
-                INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id 
-                WHERE tt.taxonomy = %s
-                ORDER BY t.name ASC 
-                LIMIT %d",
-                $taxonomy,
-                $limit
-            )
-        );
-    }
-    
-    $arr['terms'] = $terms_query;
-}break;
-
-			case 'load_users':
-			{
-				$blogusers = get_users( array( 
-					'role__in' => array('editor', 'administrator', 'author'), 
-					'fields' => array( 'ID', 'display_name' ),
-					'number' => 1000
-				));
-				$arr['users'] = $blogusers;
-				break;
-			}
 			default:
 				break;
 		}
