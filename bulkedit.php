@@ -65,86 +65,22 @@ class W3ExWordAdvBulkEditView{
 	}
 	
 	/**
-	 * Load attribute terms with improved performance
-	 * Removed recursive loading - now loads only specified limit
+	 * REMOVED - No longer used on page load
+	 * Categories loaded via AJAX when needed
 	 */
 	public function LoadAttributeTerms(&$attr,$name,$iter,$bcat = false)
 	{
-		global $wpdb;
-		$offset = $iter * 1000;
-		$iter++;
-		$limit = "LIMIT 1000 OFFSET {$offset}";
-		$getquery = "SELECT t.term_id,t.name,t.slug,tt.term_taxonomy_id,tt.parent FROM {$wpdb->prefix}terms as t INNER JOIN {$wpdb->prefix}term_taxonomy AS tt ON t.term_id= tt.term_id WHERE tt.taxonomy IN('". $name ."') ORDER BY t.slug ASC {$limit}";
-		
-		$values = $wpdb->get_results($getquery);
-		if(is_wp_error($values))
-			return false;
-		foreach($values as $val){
-			if(!is_object($val)) continue;
-			if(!property_exists($val,'term_taxonomy_id')) continue;
-			if($bcat)
-			{
-		    	if(!property_exists($val,'term_id')) continue;
-				$cat = new stdClass();
-				$cat->category_id     = $val->term_taxonomy_id;
-				if($this->iswpml)
-				{
-				   if(ICL_LANGUAGE_CODE !== 'all')
-				   {
-				   	   $id = self::lang_category_id($cat->category_id,$name);
-					   if($id === NULL || $id != $cat->category_id)
-					   		continue;
-				   }
-			    }
-				$cat->term_id         = $val->term_id;
-				$cat->category_name   = $val->name;
-				$cat->category_slug   = urldecode($val->slug);
-				$cat->category_parent = $val->parent;
-				$this->categories[] = $cat;   
-				$this->cat_asoc[$cat->category_id] = $cat;
-				continue;
-			}
-			
-			$value          = new stdClass();
-			$value->id      = $val->term_taxonomy_id;
-			if($this->iswpml)
-			{
-			   if(ICL_LANGUAGE_CODE !== 'all')
-			   {
-			   	   $id = self::lang_category_id($value->id,$name);
-				   if($id === NULL || $id != $value->id)
-				   		continue;
-			   }
-		    }
-			$value->name    = $val->name;
-			$attr->values[]  = $value;
-		}
-		
-		// REMOVED RECURSIVE LOADING - This was causing the performance issue
-		// Only loads first batch now
-		/*
-		if(count($values) === 1000)
-		{
-			$this->LoadAttributeTerms($attr,$name,$iter,$bcat);
-		}
-		*/
+		// This function kept for backward compatibility but not called on page load
+		return false;
 	}
 	
 	/**
-	 * Load attributes - now with limit to prevent loading entire database
+	 * REMOVED - No longer used on page load
 	 */
 	public function loadAttributes($limit = 1000)
 	{
-		//categories - now limited
-		$args = array(
-		    'number'     => $limit,
-		    'orderby'    => 'slug',
-		    'order'      => 'ASC',
-		    'hide_empty' => false,
-		    'include'    => '',
-			'fields'     => 'all'
-		);
-		$this->LoadAttributeTerms($args,'category',0,true);
+		// This function kept for backward compatibility but not called on page load
+		return false;
 	}
 
 	public function loadTranslations(&$arr)
@@ -199,9 +135,7 @@ class W3ExWordAdvBulkEditView{
 			$this->iswpml = true;
 		}
 		
-		// PERFORMANCE FIX: Don't load all categories on page load
-		// Categories will be loaded via AJAX when needed or limited load
-		// $this->loadAttributes(); // REMOVED - This was the main bottleneck
+		// PERFORMANCE: No category loading on page init!
 		
 		$sel_fields = array();
 		$sel_fields = get_option('w3exwabe_columns');
@@ -337,14 +271,11 @@ class W3ExWordAdvBulkEditView{
 		?>
 		
 		<div class="wrap w3exabe">
-		<!--<div id="w3exibaparent">-->
 		<a id="backlink" href="#">&lt; Back</a>
 		<h2><?php _e( 'Advanced Bulk Edit', 'wordpress-advbulkedit');?></h2>
 		<br/>
 			<div id="frontpageinfoholder" style="position:relative;"></div>
-			<!--<input id="showhidecustom" class="button" type="button" value="<?php _e("Save Changes",'wordpress-advbulkedit'); ?>" />-->
 			<br />
-			<!--<div id="searchfilterswrapper" style="max-height:350px; overflow: auto;border: 1px solid #808080;border-radius: 7px;padding:7px;">-->
 			
 			<button id="collapsefilters" class="button" data-state="collapse"><?php _e( 'Collapse Filters -', 'wordpress-advbulkedit');?></button>
 			<input id="searchfilters" type="text" style="width:150px;" placeholder="search filters"></input>
@@ -367,153 +298,14 @@ class W3ExWordAdvBulkEditView{
 			<?php echo $arrTranslated['category']; ?>: </td><td class="tdcategoryfilter">
 			
 			<?php
-			// PERFORMANCE FIX: Use WordPress's optimized dropdown with lazy loading
-			// This only loads categories when the dropdown is used
-			$dropdown_args = array(
-				'show_option_none' => __('Select categories'),
-				'option_none_value' => '',
-				'hide_empty' => 0,
-				'hierarchical' => 1,
-				'depth' => 0,
-				'taxonomy' => 'category',
-				'name' => 'selcategory',
-				'id' => 'selcategory',
-				'class' => 'makechosen catsel',
-				'selected' => 0,
-				'echo' => 1,
-				'value_field' => 'term_taxonomy_id',
-				'multiple' => true,
-				'orderby' => 'name',
-				'order' => 'ASC',
-				'number' => 1000, // Limit initial load
-			);
+			// PERFORMANCE FIX: Empty dropdown - categories loaded via AJAX when clicked
+			// Add data attribute to trigger AJAX loading
 			?>
-			<select id="selcategory" class="makechosen catsel" data-placeholder="<?php echo $arrTranslated['trans_data_placeholder']; ?>" multiple style="width:250px;">
-			 <option value=""></option>
-			<?php
-				// Load only limited categories for initial display
-				// Use wp_terms to optimize query
-				$cats_query = $wpdb->get_results(
-					$wpdb->prepare(
-						"SELECT t.term_id, t.name, tt.term_taxonomy_id, tt.parent 
-						FROM {$wpdb->terms} t 
-						INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id 
-						WHERE tt.taxonomy = %s 
-						ORDER BY t.name ASC 
-						LIMIT 1000",
-						'category'
-					)
-				);
-				
-				$cats = array();
-				$cats_asoc = array();
-				$depth = array();
-				
-				foreach($cats_query as $cat) {
-					$cat_obj = new stdClass();
-					$cat_obj->term_id = $cat->term_id;
-					$cat_obj->category_name = $cat->name;
-					$cat_obj->category_id = $cat->term_taxonomy_id;
-					$cat_obj->category_parent = $cat->parent;
-					$cats[] = $cat_obj;
-					$cats_asoc[$cat->term_id] = $cat_obj;
-				}
-				
-				$newcats = array();
-
-			    foreach($cats as $cat)
-				{
-					if($cat->category_parent == 0)
-					{
-						$depth[$cat->term_id] = 0;
-						$newcats[] = $cat;
-					}
-				}
-				foreach($cats as $cat)
-				{
-					if($cat->category_parent == 0) continue;
-					{
-						if(!isset($depth[$cat->term_id]))
-						{
-							$loop = true;
-							$counter = 0;
-							while($loop && ($counter < 1000))
-							{
-								foreach($cats as $catin)
-								{
-									if($catin->category_parent == 0)
-									   continue;
-									if(isset($depth[$catin->category_parent]))
-									{
-										$newdepth = $depth[$catin->category_parent];
-										$newdepth++;
-										if(!isset($depth[$catin->term_id]))
-										{
-											$depth[$catin->term_id] = $newdepth;
-											for($i = 0; $i < count($newcats); $i++)
-											{
-												$catins = $newcats[$i];
-												if($catins->term_id == $catin->category_parent)
-												{
-													array_splice($newcats, $i+1, 0,array($catin));
-													break;
-												}
-											}
-										}
-
-										if($catin->term_id == $cat->term_id)
-										{
-											$loop = false;
-											break;
-										}
-									}
-								}
-								$counter++;
-							}
-							if(!isset($depth[$cat->term_id]))
-							{
-								$depth[$cat->term_id] = 0;
-								$newcats[] = $cat;
-							}
-						}
-					}
-					
-				}
-				
-				if(count($newcats) == count($cats))
-				{
-					foreach($newcats as $catin)
-					{
-						$depthstring = '';
-						if(isset($depth[$catin->term_id]))
-						{
-							$depthn = (int)$depth[$catin->term_id];
-							if($depthn < 15)
-							{
-								while($depthn > 0)
-								{
-									$depthstring = $depthstring.'&nbsp;&nbsp;&nbsp;';
-									$depthn--;
-								}
-								
-							}
-						}
-						echo '<option value="'.$catin->category_id.'" >'.$depthstring.$catin->category_name.'</option>';
-					}
-				}else
-				{
-					foreach($cats as $catin)
-					{
-						echo '<option value="'.$catin->category_id.'" >'.$catin->category_name.'</option>';
-					}
-				}
-				
-				// Add indicator if there are more categories
-				$total_cats = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->term_taxonomy} WHERE taxonomy = 'category'");
-				if($total_cats > 1000) {
-					echo '<option value="" disabled>--- '.__('Showing first 1000 of', 'wordpress-advbulkedit').' '.$total_cats.' '.__('categories', 'wordpress-advbulkedit').' ---</option>';
-				}
-			?>
+			<select id="selcategory" class="makechosen catsel lazy-load-taxonomy" 
+			        data-taxonomy="category"
+			        data-placeholder="<?php echo $arrTranslated['trans_data_placeholder']; ?>" 
+			        multiple style="width:250px;">
+			 <option value=""><?php _e('Loading...', 'wordpress-advbulkedit'); ?></option>
 			</select>&nbsp;<label><input type="checkbox" id="categoryor" style="width:auto;">AND</input></label>
 			</td></tr>
 			
@@ -541,7 +333,6 @@ class W3ExWordAdvBulkEditView{
 			</tr>
 			</tbody>
 			</table>
-			<!--</div>-->
 			<br/><br/><br/>
 			<div id="loadsavediv">
 			 <button id="getproducts" class="button" type="button">
@@ -553,20 +344,17 @@ class W3ExWordAdvBulkEditView{
 				<option value="post" selected><?php _e( 'Posts', 'wordpress-advbulkedit');?></option>
 				<option value="page"><?php _e( 'Pages', 'wordpress-advbulkedit');?></option>
 				<option value="attachment"><?php _e( 'Media', 'wordpress-advbulkedit');?></option>
-				<?php	$args = array(
-		    '_builtin' => false
-		);
+				<?php	
+				$args = array('_builtin' => false);
+				$output = 'objects';
+				$post_types = get_post_types( $args, $output );
 
-		$output = 'objects'; // names or objects
-
-		$post_types = get_post_types( $args, $output );
-
-		foreach ( $post_types  as $post_type ) {
-		   if($post_type->name === "product" || $post_type->name === "product_variation"|| $post_type->name === "shop_order"|| $post_type->name === "shop_order_refund"|| $post_type->name === "shop_coupon"|| $post_type->name === "shop_webhook")
-		   	  continue;
-		   echo '<option value="' . $post_type->name . '">'.$post_type->label.'</option>';
-		}
-		?>
+				foreach ( $post_types  as $post_type ) {
+				   if($post_type->name === "product" || $post_type->name === "product_variation"|| $post_type->name === "shop_order"|| $post_type->name === "shop_order_refund"|| $post_type->name === "shop_coupon"|| $post_type->name === "shop_webhook")
+				   	  continue;
+				   echo '<option value="' . $post_type->name . '">'.$post_type->label.'</option>';
+				}
+				?>
 			</select> &nbsp;&nbsp;
 			  <label><input id="getvariations" type="checkbox" <?php 
 				if(is_array($settings))
@@ -592,9 +380,7 @@ class W3ExWordAdvBulkEditView{
 			</div>
 			<br /><br />
 			<div style="position: relative;" id="mainbuttons">
-			 <!--<button id="bulkedit">Bulk Edit</button>-->
 			 <input id="settings" class="button-primary-copied" type="button" value="<?php _e( "Show/Hide Columns", "wordpress-advbulkedit"); ?>" />
-			<!-- class="button-primary-copied"-->
 			 <div id="addprodarea">
 				<button id="addprodbut" class="button" type="button">
 				<span class="icon-plus-outline"></span>
@@ -613,37 +399,26 @@ class W3ExWordAdvBulkEditView{
 			<?php echo $this->mb_ucfirst(__( "delete", 'wordpress-advbulkedit'));?>
 			</button>
 			</div>
-			<input id="selectedit" class="button" type="button" value="<?php
-_e( "Selection Manager", 'wordpress-advbulkedit');
-?>" />
+			<input id="selectedit" class="button" type="button" value="<?php _e( "Selection Manager", 'wordpress-advbulkedit');?>" />
 			<button id="bulkedit" class="button" type="button">
 			<span class="icon-edit"></span>
 			<?php echo _e( "Bulk Edit", 'wordpress-advbulkedit');?>
 			</button>
-			<!--<div style="display: inline-block;"><i class="icon-edit"></i></div>-->
 			 <div id="quicksettingsarea">
-				<input id="quicksettingsbut" class="button" type="button" value="<?php
-_e( "Quick Settings", 'wordpress-advbulkedit');
-?>" />
+				<input id="quicksettingsbut" class="button" type="button" value="<?php _e( "Quick Settings", 'wordpress-advbulkedit');?>" />
 			</div>
-			<div id="bulkedittext" style="display: inline-block;"><?php _e( "Selected rows for bulk editing", 'wordpress-advbulkedit'); ?>:<!--<input id="showselectedbut" class="button" type="button" value="Show Selected" />--></div><div id="bulkeditinfo"> 0 of 0</div>
+			<div id="bulkedittext" style="display: inline-block;"><?php _e( "Selected rows for bulk editing", 'wordpress-advbulkedit'); ?>:</div><div id="bulkeditinfo"> 0 of 0</div>
 			</div>
 			<div id="gridholder">
-				<!--<div style="width:100%;">-->
 				    <div id="myGrid" style="width:100%;height:80vh;"></div>
-				<!--</div>-->
 			</div>
 			<div id="pagingholder" style="position:relative;">
 			<input id="gotopage" class="button" type="button" value="<?php _e( "First", 'wordpress-advbulkedit'); ?>" /><input id="butprevious" class="button" type="button" value="<?php _e( "Previous", 'wordpress-advbulkedit'); ?>" /> <?php _e( "Page", 'wordpress-advbulkedit'); ?>:<input id="gotopagenumber" type="text" value="1" style="width:15px;" readonly/> 	<input id="butnext" class="button" type="button" value="<?php _e( "Next", 'wordpress-advbulkedit'); ?>" /> <?php _e( "Total records", 'wordpress-advbulkedit'); ?>: <div id="totalrecords" style="display:inline-block;padding:0px 6px;"></div><div id="totalpages" style="display:inline-block;"></div><div id="viewingwhich" style="display:inline-block;padding:0px 6px;"></div></div> <br /><br />
 			<div id="revertinfo"><?php _e( "Revert to original value", 'wordpress-advbulkedit'); ?></div> 
-			<!--<input id="revertcell" class="button" type="button" value="<?php _e( "Active Cell", 'wordpress-advbulkedit'); ?>" />
-			<input id="revertrow" class="button" type="button" value="<?php _e( "Active Row", 'wordpress-advbulkedit'); ?>" />-->
 			<input id="revertselected" class="button" type="button" value="<?php _e( "Selected Rows", 'wordpress-advbulkedit'); ?>" />
 			<input id="revertall" class="button" type="button" value="<?php _e( "All Rows", 'wordpress-advbulkedit'); ?>" />
 			<br /><br /><br />
 			
-			
-			<!--<input id="viewdialogbut" class="button" type="button" value="<?php _e( "Load/Save View", 'wordpress-advbulkedit'); ?>" />-->
 			<input id="customfieldsbut" class="button" type="button" value="<?php _e( "Custom Fields", 'wordpress-advbulkedit'); ?>" />
 			<input id="findcustomfieldsbut" class="button" type="button" value="<?php _e( "Find Custom Fields", 'wordpress-advbulkedit'); ?>" />
 			<button id="pluginsettingsbut" class="button" type="button">
@@ -691,9 +466,7 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 					</tr>
 					<tr>
 						<td style="borde:none;display: none; ">
-						<!--	<label><?php _e( 'Use real meta values', 'wordpress-advbulkedit'); ?>: -->
 							<input id="userealmeta" type="checkbox" checked="checked"></input>
-							<!--</label>-->
 						</td>
 					</tr>
 				</table>
@@ -713,11 +486,9 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 			<div id="pluginsettings">
 			<div style="width:100%;height:100%;">
 			<br/>
-			<!--settings-->
 			<div id="pluginsettingstab">
 					<ul>
 					<li><a href="#pluginsettingstab-1"><?php echo $arrTranslated['trans_main_settings']; ?></a></li>
-					<!--<li><a href="#pluginsettingstab-2"><?php echo $arrTranslated['trans_search_settings']; ?></a></li>-->
 					</ul>
 					
 					<div id="pluginsettingstab-1">
@@ -773,7 +544,6 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 						<td width="50%" style="padding-top: 20px;">
 							<label><input id="gettotalnumber" type="checkbox" autocomplete="off"
 							<?php 
-//						  	$settings = get_option('w3exwabe_settings');
 							if(isset($settings['settgetall']))
 							{
 								if($settings['settgetall'] == 1)
@@ -791,7 +561,6 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 						<td width="50%" style="padding-top: 20px;">
 							<label><input id="deleteimages" type="checkbox"
 							<?php 
-//						  	$settings = get_option('w3exwabe_settings');
 							if(isset($settings['deleteimages']))
 							{
 								if($settings['deleteimages'] == 1)
@@ -809,7 +578,6 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 						<td width="50%" style="padding-top: 20px;">
 							<label><input id="deleteinternal" type="checkbox"
 							<?php 
-//						  	$settings = get_option('w3exwabe_settings');
 							if(isset($settings['deleteinternal']))
 							{
 								if($settings['deleteinternal'] == 1)
@@ -953,7 +721,8 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 				echo 'W3Ex.trans_append = "'.$append.'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_replacetext = "'.$replacetext.'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_ignorecase = "'.$ignorecase.'";'; echo PHP_EOL;
-				echo 'W3Ex.trans_withtext = "'.$withtext.'";'; echo PHP_EOL;						echo 'W3Ex.trans_delete = "'.$delete.'";'; echo PHP_EOL;	
+				echo 'W3Ex.trans_withtext = "'.$withtext.'";'; echo PHP_EOL;
+				echo 'W3Ex.trans_delete = "'.$delete.'";'; echo PHP_EOL;	
 				echo 'W3Ex.trans_incbyvalue = "'.__( "increase by value", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_decbyvalue = "'.__( "decrease by value", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_incbyper = "'.__( "increase by %", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
@@ -966,6 +735,11 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 				echo 'W3Ex.trans_add = "'.__( "add", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_select = "'.__( "Select", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_bulkadd = "'.__( "Bulk Add", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
+				
+				// PERFORMANCE: Note that categories should be loaded via AJAX
+				echo '// Categories will be loaded via AJAX when dropdown is opened'; echo PHP_EOL;
+				echo 'W3Ex.categories_loaded = false;'; echo PHP_EOL;
+				
 				echo "</script>";
 			 ?>
 			<!--//bulk dialog-->
@@ -1141,18 +915,9 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 						
 					</td>
 					<td class="nontextnumbertd">
-						 <select id="bulkpost_author" class="makechosen catselset" style="width:250px;" data-placeholder="select">
-						<?php
-							$blogusers = get_users( array( 'role' => 'editor', 'fields' => array( 'ID', 'display_name' ) ));
-							$blogusers1 = get_users( array( 'role' => 'administrator', 'fields' => array( 'ID', 'display_name' ) ));
-							$blogusers = array_merge($blogusers,$blogusers1);
-							$blogusers1 = get_users( array( 'role' => 'author', 'fields' => array( 'ID', 'display_name' ) ));
-							$blogusers = array_merge($blogusers,$blogusers1);
-							foreach ( $blogusers as $user ) 
-							{
-								echo '<option value="'.$user->ID.'" >'.$user->display_name.'</option>';
-							}
-						?>
+						 <!-- PERFORMANCE: Load authors on-demand -->
+						 <select id="bulkpost_author" class="makechosen catselset lazy-load-users" style="width:250px;" data-placeholder="select">
+						 <option value=""><?php _e('Loading...', 'wordpress-advbulkedit'); ?></option>
 						</select>
 					</td>
 					<td>
@@ -1401,9 +1166,6 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 			<br/>
 			</div>
 			
-		<!--	
-		settings dialog
-		-->
 			<!--//show/hide fields-->
 			<div id="settingsdialog">
 			
@@ -1523,249 +1285,34 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 			</table>
 			<br/>
 			</div>
-			<!--//grouped dialog-->
+			<!--//grouped dialog - PERFORMANCE: Categories loaded on-demand -->
 			<div id="categoriesdialog">
-				<div class='category'>
-					<?php
-							$args = array(
-							'descendants_and_self'  => 0,
-							'selected_cats'         => false,
-							'popular_cats'          => false,
-							'walker'                => null,
-							'taxonomy'              => 'category',
-							'checked_ontop'         => true,
-							'number'                => 1000, // PERFORMANCE: Limit loaded categories
-						);
-
-						?>
-					<ul class="categorychecklist form-no-clear">
-							<?php wp_terms_checklist( 0, $args ); ?>
-					</ul>
+				<!-- Categories will be loaded via AJAX when dialog is opened -->
+				<div class='category lazy-load-category-dialog' data-taxonomy="category">
+					<p><?php _e('Loading categories...', 'wordpress-advbulkedit'); ?></p>
 				</div>
-				<div class='post_tag'>
-					<?php
-							$args = array(
-							'descendants_and_self'  => 0,
-							'selected_cats'         => false,
-							'popular_cats'          => false,
-							'walker'                => null,
-							'taxonomy'              => 'post_tag',
-							'checked_ontop'         => true,
-							'number'                => 1000, // PERFORMANCE: Limit loaded tags
-						);
-
-						?>
-					<ul class="categorychecklist form-no-clear">
-							<?php wp_terms_checklist( 0, $args ); ?>
-					</ul>
+				<div class='post_tag lazy-load-category-dialog' data-taxonomy="post_tag">
+					<p><?php _e('Loading tags...', 'wordpress-advbulkedit'); ?></p>
 				</div>
-				<div class='post_format'>
-					<?php
-							$args = array(
-							'descendants_and_self'  => 0,
-							'selected_cats'         => false,
-							'popular_cats'          => false,
-							'walker'                => null,
-							'taxonomy'              => 'post_format',
-							'checked_ontop'         => true
-						);
-
-						?>
-					<ul class="categorychecklist form-no-clear">
-							<?php wp_terms_checklist( 0, $args ); ?>
-					</ul>
+				<div class='post_format lazy-load-category-dialog' data-taxonomy="post_format">
+					<p><?php _e('Loading formats...', 'wordpress-advbulkedit'); ?></p>
 				</div>
-				<div class='post_author'>
-					<ul class="categorychecklist form-no-clear clearothers">
-							<?php 
-							foreach ( $blogusers as $user ) 
-							{
-								echo '<li>
-				    					<label class="selectit">
-									        <input value="'.$user->ID.'" type="checkbox">
-									        '.$user->display_name.'
-									    </label>
-									</li>'
-								;
-							}
-							
-							 ?>
-					</ul>
+				<div class='post_author lazy-load-author-dialog'>
+					<p><?php _e('Loading authors...', 'wordpress-advbulkedit'); ?></p>
 				</div>
-				<?php
-					if(is_array($sel_fields) && !empty($sel_fields))
-					{
-						foreach($sel_fields as $keyout => $outarray)
-						{
-							foreach($outarray as $key => $innerarray)
-							{
-								if(isset($innerarray['type']))
-								{
-									if($innerarray['type'] === 'customh')
-									{
-										if(taxonomy_exists($key))
-										{
-											echo '<div class="'.$key.'">';
-											echo PHP_EOL;
-											echo '<ul class="categorychecklist form-no-clear">';
-											$args = array(
-												'descendants_and_self'  => 0,
-												'selected_cats'         => false,
-												'popular_cats'          => false,
-												'walker'                => null,
-												'taxonomy'              => $key,
-												'checked_ontop'         => true,
-												'number'                => 1000, // PERFORMANCE: Limit loaded terms
-											);
-											wp_terms_checklist( 0, $args );
-											echo '</ul></div>';
-										}
-									}
-								}
-							}
-						}
-					}
-				?>
-				
 			</div>
+			
 			<?php
-				// ... Rest of the JavaScript generation for bulk editing taxonomies...
-				// This section remains mostly the same but uses optimized queries
-				if(is_array($sel_fields) && !empty($sel_fields))
-				{
-					echo PHP_EOL;
-					echo '<script>';
-					foreach($sel_fields as $keyout => $outarray)
-					{
-						foreach($outarray as $key => $innerarray)
-					{
-						if(isset($innerarray['type']))
-						{
-							if($innerarray['type'] === 'customh' || $innerarray['type'] === 'custom')
-							{
-								if(taxonomy_exists($key))
-								{
-									$name = $key;
-									if(isset($innerarray['name']))
-										$name = $innerarray['name'];
-									$bulktext = '<tr data-id="'.$key.'" class="customfieldtr"><td>'
-									.'<input id="set'.$key.'" type="checkbox" class="bulkset" data-id="'.$key.'" data-type="customtaxh"><label for="set'.$key.'">Set '.$name.'</label></td><td>'.
-						'<select id="bulkadd'.$key.'" class="bulkselect">'.
-							'<option value="new">'.__('set new','wordpress-advbulkedit').'</option>'.
-							'<option value="add">'.__('add','wordpress-advbulkedit').'</option>'.
-							'<option value="remove">'.__('remove','wordpress-advbulkedit').'</option></select></td><td class="nontextnumbertd">'
-									 .'<select id="bulk'.$key.'" class="makechosen catselset" style="width:250px;" data-placeholder="'.str_replace('\\','\\\\',$arrTranslated['trans_data_placeholder']).'" multiple ><option value=""></option>';
-									 $searchtext = ' class="makechosen catselset" style="width:250px;" data-placeholder="'.str_replace('\\','\\\\',$arrTranslated['trans_data_placeholder']).'" multiple ><option value=""></option>';
-									   
-									// PERFORMANCE: Use optimized query with limit
-									$woo_categoriesb = $wpdb->get_results(
-										$wpdb->prepare(
-											"SELECT t.term_id, t.name, tt.term_taxonomy_id 
-											FROM {$wpdb->terms} t 
-											INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id 
-											WHERE tt.taxonomy = %s 
-											ORDER BY t.name ASC 
-											LIMIT 1000",
-											$key
-										)
-									);
-									
-									if(is_wp_error($woo_categoriesb))
-											continue;
-									foreach($woo_categoriesb as $category)
-									{
-										$catname = str_replace('"','\"',$category->name);
-										$catname = trim(preg_replace('/\s+/', ' ', $catname));
-									   	$bulktext.= '<option value="'.$category->term_id.'" >'.$catname.'</option>';
-										$searchtext.= '<option value="'.$category->term_taxonomy_id.'" >'.$catname.'</option>';
-									}
-									$bulktext.= '</select></td><td></td></tr>';
-									$searchtext.= '</select>';
-									if($innerarray['type'] === 'customh')
-									{
-										echo "W3Ex['".str_replace("'","\'",$key)."bulk'] = '".str_replace("'","\'",$bulktext)."';";
-									}
-									echo "W3Ex['taxonomyterms".str_replace("'","\'",$key)."'] = '".str_replace("'","\'",$searchtext)."';";
-									echo PHP_EOL;
-								}
-							}
-						}
-					}
-					}
-					
-				}
-				echo '</script>';
-				echo PHP_EOL;
-				echo '<script>';
-				$key = 'post_author';
-				$searchtext = ' class="makechosen catselset" style="width:250px;" data-placeholder="select" multiple >';
-				 
-
-				foreach ( $blogusers as $user ) 
-				{
-					$catname = str_replace('"','\"',$user->display_name);
-					$catname = trim(preg_replace('/\s+/', ' ', $catname));
-					$searchtext.= '<option value="'.$user->ID.'" >'.$catname.'</option>';
-				}
-
-				$searchtext.= '</select>';
-				echo PHP_EOL;
-				echo "W3Ex['taxonomyterms".str_replace("'","\'",$key)."'] = '".str_replace("'","\'",$searchtext)."';";
-				$builtintax = array();
-				$builtintax[] = array('key' => 'post_format','name' => 'Post Format');
-				$builtintax[] = array('key' => 'category','name' => 'Category');
-				$builtintax[] = array('key' => 'post_tag','name' => 'Tags');
-				$categorybulk = '<button class="butnewattribute button newcat" type="button"><span class="icon-plus-outline"></span>new</button>'.
-							'<div class="divnewattribute"> '.
-			   '<input class="inputnewattributename" type="text" placeholder="name" data-slug="category"></input><br/> '.
-			   '<input class="inputnewattributeslug" type="text" placeholder="slug (optional)"></input><br/> '.
-			   '<select class="selectnewcategory" data-placeholder="select parent(optional)" multiple></select><br/>'.
-			   '<button class="butnewattributesave butbulkdialog newcat" style="position:relative;">Ok</button><button class="butnewattributecancel newcat">Cancel</button></div> '.
-			   '<div class="divnewattributeerror"></div>';
-					foreach($builtintax as $inarray)
-					{
-						$bulktext = '<tr data-id="'.$inarray['key'].'" class="customfieldtr"><td>'.
-						'<input id="set'.$inarray['key'].'" type="checkbox" class="bulkset" data-id="'.$inarray['key'].'" data-type="customtaxh"><label for="set'.$inarray['key'].'">Set '.$inarray['name'].'</label></td><td>'.
-			'<select id="bulkadd'.$inarray['key'].'" class="bulkselect">'.
-				'<option value="new">'.__('set new','wordpress-advbulkedit').'</option>'.
-				'<option value="add">'.__('add','wordpress-advbulkedit').'</option>'.
-				'<option value="remove">'.__('remove','wordpress-advbulkedit').'</option></select>'.$categorybulk.'</td><td class="nontextnumbertd">'
-						 .'<select id="bulk'.$inarray['key'].'" class="makechosen catselset" style="width:250px;" data-placeholder="'.str_replace('\\','\\\\',$arrTranslated['trans_data_placeholder']).'" multiple ><option value=""></option>';
-						 $searchtext = ' class="makechosen catselset" style="width:250px;" data-placeholder="'.str_replace('\\','\\\\',$arrTranslated['trans_data_placeholder']).'" multiple ><option value=""></option>';
-						  
-						// PERFORMANCE: Use optimized query with limit
-						$woo_categoriesb = $wpdb->get_results(
-							$wpdb->prepare(
-								"SELECT t.term_id, t.name, tt.term_taxonomy_id 
-								FROM {$wpdb->terms} t 
-								INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id 
-								WHERE tt.taxonomy = %s 
-								ORDER BY t.name ASC 
-								LIMIT 1000",
-								$inarray['key']
-							)
-						);
-						
-						if(is_wp_error($woo_categoriesb))
-								continue;
-						foreach($woo_categoriesb as $category)
-						{
-							$catname = str_replace('"','\"',$category->name);
-							$catname = trim(preg_replace('/\s+/', ' ', $catname));
-						   	$bulktext.= '<option value="'.$category->term_id.'" >'.$catname.'</option>';
-							$searchtext.= '<option value="'.$category->term_taxonomy_id.'" >'.$catname.'</option>';
-						}
-						$bulktext.= '</select></td><td></td></tr>';
-						
-						$searchtext.= '</select>';
-						{
-							echo "W3Ex['".str_replace("'","\'",$inarray['key'])."bulk'] = '".str_replace("'","\'",$bulktext)."';";
-						}
-						echo "W3Ex['taxonomyterms".str_replace("'","\'",$inarray['key'])."'] = '".str_replace("'","\'",$searchtext)."';";
-						echo PHP_EOL;
-					}
-				echo '</script>';
+			// PERFORMANCE: Don't load taxonomy terms on page load
+			// They will be loaded via AJAX when needed
+			echo PHP_EOL;
+			echo '<script>';
+			echo '// Taxonomy terms will be loaded via AJAX when needed'; echo PHP_EOL;
+			echo 'W3Ex.taxonomies_loaded = {};'; echo PHP_EOL;
+			echo 'W3Ex.authors_loaded = false;'; echo PHP_EOL;
+			echo "</script>";
 			?>
+			
 			<!--//custom fields dialog-->
 			<div id="customfieldsdialog">
 			<table cellpadding="10" cellspacing="0" id="customfieldstable">
@@ -1831,8 +1378,6 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 		{
 			if($settings['debugmode'] == 1)
 			{
-//				$totalmem = (int) ini_get('memory_limit') ;
-//				echo "Allocated: ".$totalmem."<br/>";
 			}
 		}?>
 		</div>
@@ -1871,5 +1416,3 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 }
 
 W3ExWordAdvBulkEditView::init();
-
-							
