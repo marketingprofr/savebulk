@@ -164,6 +164,73 @@ class W3ExWordAdvBulkEditView{
 		{
 			echo 'W3Ex._isrtlenabled = true;';
 		}
+		if(is_rtl())
+{
+    echo '<style>
+            .w3exabe input,textarea {
+                direction: rtl !important;
+            }
+            .w3exabe div.slick-cell {
+                direction: rtl !important;
+            }
+        </style>';
+}
+
+// Add the new CSS for search functionality
+echo '<style>
+    .category-search-container {
+        position: relative;
+        display: inline-block;
+        width: 250px;
+    }
+    .search-results-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-top: none;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1000;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .search-result-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .search-result-item:hover {
+        background-color: #f0f0f0;
+    }
+    .search-result-item.loading {
+        text-align: center;
+        color: #666;
+        cursor: default;
+    }
+    .selected-items {
+        margin-top: 5px;
+        min-height: 20px;
+    }
+    .selected-item-tag {
+        display: inline-block;
+        background: #0073aa;
+        color: white;
+        padding: 4px 8px;
+        margin: 2px;
+        border-radius: 3px;
+        font-size: 12px;
+    }
+    .selected-item-tag .remove-tag {
+        margin-left: 5px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    .selected-item-tag .remove-tag:hover {
+        color: #ff0000;
+    }
+</style>';
 		if(function_exists('icl_object_id') || has_filter('wpml_object_id'))
 		{
 			if(ICL_LANGUAGE_CODE != 'all')
@@ -296,17 +363,13 @@ class W3ExWordAdvBulkEditView{
 			</td>
 			<td class="tdcategoryfilter">
 			<?php echo $arrTranslated['category']; ?>: </td><td class="tdcategoryfilter">
-			
-			<?php
-			// PERFORMANCE FIX: Empty dropdown - categories loaded via AJAX when clicked
-			// Add data attribute to trigger AJAX loading
-			?>
-			<select id="selcategory" class="makechosen catsel lazy-load-taxonomy" 
-			        data-taxonomy="category"
-			        data-placeholder="<?php echo $arrTranslated['trans_data_placeholder']; ?>" 
-			        multiple style="width:250px;">
-			 <option value=""><?php _e('Loading...', 'wordpress-advbulkedit'); ?></option>
-			</select>&nbsp;<label><input type="checkbox" id="categoryor" style="width:auto;">AND</input></label>
+			<div class="category-search-container">
+				<input type="text" id="category-search" placeholder="<?php _e('Search categories...', 'wordpress-advbulkedit'); ?>" style="width:250px;" />
+				<div id="category-search-results" class="search-results-dropdown" style="display:none;"></div>
+				<div id="selected-categories" class="selected-items"></div>
+				<input type="hidden" id="selcategory" value="" />
+			</div>
+			&nbsp;<label><input type="checkbox" id="categoryor" style="width:auto;">AND</input></label>
 			</td></tr>
 			
 			<tr class="showdescriptions">
@@ -1404,10 +1467,160 @@ class W3ExWordAdvBulkEditView{
 			<DIV style='text-align:right' id="savewordpeditor"><BUTTON>Save</BUTTON><BUTTON id="cancelwordpeditor">Cancel</BUTTON></DIV>
 			</div>
 		</div>
+
+<script>
+jQuery(document).ready(function($) {
+    var selectedCategories = {};
+    var searchTimeout;
+    
+    // Category search functionality
+    $('#category-search').on('keyup', function() {
+        var searchTerm = $(this).val();
+        
+        clearTimeout(searchTimeout);
+        
+        if (searchTerm.length < 2) {
+            $('#category-search-results').hide();
+            return;
+        }
+        
+        searchTimeout = setTimeout(function() {
+            searchCategories(searchTerm);
+        }, 300); // Wait 300ms after user stops typing
+    });
+    
+    // Search categories via AJAX
+    function searchCategories(searchTerm) {
+        $('#category-search-results').html('<div class="search-result-item loading">Searching...</div>').show();
+        
+        $.ajax({
+            url: W3ExWABE.ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'wordpress_adv_bulk_edit',
+                nonce: W3ExWABE.nonce,
+                type: 'load_taxonomy_terms',
+                taxonomy: 'category',
+                search: searchTerm,
+                limit: 20
+            },
+            success: function(response) {
+                var result = JSON.parse(response);
+                if (result.success === 'yes' && result.terms && result.terms.length > 0) {
+                    var html = '';
+                    $.each(result.terms, function(i, term) {
+                        // Skip already selected
+                        if (selectedCategories[term.term_taxonomy_id]) {
+                            return;
+                        }
+                        html += '<div class="search-result-item" data-id="' + term.term_taxonomy_id + '" data-name="' + term.name + '">';
+                        html += term.name;
+                        html += '</div>';
+                    });
+                    
+                    if (html === '') {
+                        html = '<div class="search-result-item loading">All matching categories already selected</div>';
+                    }
+                    
+                    $('#category-search-results').html(html);
+                } else {
+                    $('#category-search-results').html('<div class="search-result-item loading">No categories found</div>');
+                }
+            },
+            error: function() {
+                $('#category-search-results').html('<div class="search-result-item loading">Error searching categories</div>');
+            }
+        });
+    }
+    
+    // Click on search result to select
+    $(document).on('click', '.search-result-item:not(.loading)', function() {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        
+        addSelectedCategory(id, name);
+        $(this).remove();
+        
+        // Clear search
+        $('#category-search').val('');
+        $('#category-search-results').hide();
+    });
+    
+    // Add selected category
+    function addSelectedCategory(id, name) {
+        if (selectedCategories[id]) {
+            return; // Already selected
+        }
+        
+        selectedCategories[id] = name;
+        
+        var tag = $('<span class="selected-item-tag">' + name + ' <span class="remove-tag" data-id="' + id + '">×</span></span>');
+        $('#selected-categories').append(tag);
+        
+        updateHiddenInput();
+    }
+    
+    // Remove selected category
+    $(document).on('click', '.remove-tag', function() {
+        var id = $(this).data('id');
+        delete selectedCategories[id];
+        $(this).parent().remove();
+        updateHiddenInput();
+    });
+    
+    // Update hidden input with selected IDs
+    function updateHiddenInput() {
+        var ids = Object.keys(selectedCategories).join(',');
+        $('#selcategory').val(ids);
+    }
+    
+    // Hide dropdown when clicking outside
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('.category-search-container').length) {
+            $('#category-search-results').hide();
+        }
+    });
+    
+    // Load authors when needed (keep this)
+    var authorsLoaded = false;
+    $(document).on('mousedown focus', '#bulkpost_author', function() {
+        if (!authorsLoaded) {
+            authorsLoaded = true;
+            loadUsers('#bulkpost_author');
+        }
+    });
+    
+    function loadUsers(selector) {
+        $.ajax({
+            url: W3ExWABE.ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'wordpress_adv_bulk_edit',
+                nonce: W3ExWABE.nonce,
+                type: 'load_users'
+            },
+            success: function(response) {
+                var result = JSON.parse(response);
+                if (result.success === 'yes' && result.users) {
+                    var $select = $(selector);
+                    $select.empty();
+                    
+                    $.each(result.users, function(i, user) {
+                        $select.append('<option value="' + user.ID + '">' + user.display_name + '</option>');
+                    });
+                    
+                    $select.trigger('chosen:updated');
+                }
+            }
+        });
+    }
+});
+</script>
+
+
 		<?php
 		
 	}
-	
 	
     public function _main()
     {
