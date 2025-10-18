@@ -64,23 +64,78 @@ class W3ExWordAdvBulkEditView{
 		}
 	}
 	
-	/**
-	 * REMOVED - No longer used on page load
-	 * Categories loaded via AJAX when needed
-	 */
 	public function LoadAttributeTerms(&$attr,$name,$iter,$bcat = false)
 	{
-		// This function kept for backward compatibility but not called on page load
-		return false;
+		global $wpdb;
+		$offset = $iter * 1000;
+		$iter++;
+		$limit = "LIMIT 1000 OFFSET {$offset}";
+		$getquery = "SELECT t.term_id,t.name,t.slug,tt.term_taxonomy_id,tt.parent FROM {$wpdb->prefix}terms as t INNER JOIN {$wpdb->prefix}term_taxonomy AS tt ON t.term_id= tt.term_id WHERE tt.taxonomy IN('". $name ."') ORDER BY t.slug ASC {$limit}";
+		
+		$values = $wpdb->get_results($getquery);
+		if(is_wp_error($values))
+			return false;
+		foreach($values as $val){
+			if(!is_object($val)) continue;
+			if(!property_exists($val,'term_taxonomy_id')) continue;
+			if($bcat)
+			{
+		    	if(!property_exists($val,'term_id')) continue;
+				$cat = new stdClass();
+				$cat->category_id     = $val->term_taxonomy_id;
+				if($this->iswpml)
+				{
+				   if(ICL_LANGUAGE_CODE !== 'all')
+				   {
+				   	   $id = self::lang_category_id($cat->category_id,$name);
+					   if($id === NULL || $id != $cat->category_id)
+					   		continue;
+				   }
+			    }
+				$cat->term_id         = $val->term_id;
+				$cat->category_name   = $val->name;
+				$cat->category_slug   = urldecode($val->slug);
+				$cat->category_parent = $val->parent;
+				$this->categories[] = $cat;   
+				$this->cat_asoc[$cat->category_id] = $cat;
+				continue;
+			}
+			
+			$value          = new stdClass();
+			$value->id      = $val->term_taxonomy_id;
+			if($this->iswpml)
+			{
+			   if(ICL_LANGUAGE_CODE !== 'all')
+			   {
+			   	   $id = self::lang_category_id($value->id,$name);
+				   if($id === NULL || $id != $value->id)
+				   		continue;
+			   }
+		    }
+//			$value->term_id      = $val->term_id;
+//			$value->slug    = $val->slug;
+			$value->name    = $val->name;
+//			$value->parent  = $val->parent;
+			$attr->values[]  = $value;
+		}
+		if(count($values) === 1000)
+		{
+			$this->LoadAttributeTerms($attr,$name,$iter,$bcat);
+		}
 	}
 	
-	/**
-	 * REMOVED - No longer used on page load
-	 */
-	public function loadAttributes($limit = 1000)
+	public function loadAttributes()
 	{
-		// This function kept for backward compatibility but not called on page load
-		return false;
+		//categories
+		$args = array(
+		    'number'     => 99999,
+		    'orderby'    => 'slug',
+		    'order'      => 'ASC',
+		    'hide_empty' => false,
+		    'include'    => '',
+			'fields'     => 'all'
+		);
+		$this->LoadAttributeTerms($args,'category',0,true);
 	}
 
 	public function loadTranslations(&$arr)
@@ -134,9 +189,7 @@ class W3ExWordAdvBulkEditView{
 		{
 			$this->iswpml = true;
 		}
-		
-		// PERFORMANCE: No category loading on page init!
-		
+		$this->loadAttributes();
 		$sel_fields = array();
 		$sel_fields = get_option('w3exwabe_columns');
 		$purl = plugin_dir_url(__FILE__);
@@ -164,73 +217,6 @@ class W3ExWordAdvBulkEditView{
 		{
 			echo 'W3Ex._isrtlenabled = true;';
 		}
-		if(is_rtl())
-{
-    echo '<style>
-            .w3exabe input,textarea {
-                direction: rtl !important;
-            }
-            .w3exabe div.slick-cell {
-                direction: rtl !important;
-            }
-        </style>';
-}
-
-// Add the new CSS for search functionality
-echo '<style>
-    .category-search-container {
-        position: relative;
-        display: inline-block;
-        width: 250px;
-    }
-    .search-results-dropdown {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        background: white;
-        border: 1px solid #ddd;
-        border-top: none;
-        max-height: 200px;
-        overflow-y: auto;
-        z-index: 1000;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .search-result-item {
-        padding: 8px 12px;
-        cursor: pointer;
-        border-bottom: 1px solid #f0f0f0;
-    }
-    .search-result-item:hover {
-        background-color: #f0f0f0;
-    }
-    .search-result-item.loading {
-        text-align: center;
-        color: #666;
-        cursor: default;
-    }
-    .selected-items {
-        margin-top: 5px;
-        min-height: 20px;
-    }
-    .selected-item-tag {
-        display: inline-block;
-        background: #0073aa;
-        color: white;
-        padding: 4px 8px;
-        margin: 2px;
-        border-radius: 3px;
-        font-size: 12px;
-    }
-    .selected-item-tag .remove-tag {
-        margin-left: 5px;
-        cursor: pointer;
-        font-weight: bold;
-    }
-    .selected-item-tag .remove-tag:hover {
-        color: #ff0000;
-    }
-</style>';
 		if(function_exists('icl_object_id') || has_filter('wpml_object_id'))
 		{
 			if(ICL_LANGUAGE_CODE != 'all')
@@ -277,6 +263,10 @@ echo '<style>
 				{	
 					echo 'W3Ex._w3esetting_table_height = "'.$settings['tableheight'].'";'; echo PHP_EOL;
 				}
+//				if(isset($settings['searchfiltersheight']) && is_numeric($settings['searchfiltersheight']))
+//				{	
+//					echo 'W3Ex._w3esetting_filter_height = "'.$settings['searchfiltersheight'].'";'; echo PHP_EOL;
+//				}
 				if(isset($settings['disablesafety']) && is_numeric($settings['disablesafety']))
 				{	
 					if($settings['disablesafety'] == 1)
@@ -338,11 +328,14 @@ echo '<style>
 		?>
 		
 		<div class="wrap w3exabe">
+		<!--<div id="w3exibaparent">-->
 		<a id="backlink" href="#">&lt; Back</a>
 		<h2><?php _e( 'Advanced Bulk Edit', 'wordpress-advbulkedit');?></h2>
 		<br/>
 			<div id="frontpageinfoholder" style="position:relative;"></div>
+			<!--<input id="showhidecustom" class="button" type="button" value="<?php _e("Save Changes",'wordpress-advbulkedit'); ?>" />-->
 			<br />
+			<!--<div id="searchfilterswrapper" style="max-height:350px; overflow: auto;border: 1px solid #808080;border-radius: 7px;padding:7px;">-->
 			
 			<button id="collapsefilters" class="button" data-state="collapse"><?php _e( 'Collapse Filters -', 'wordpress-advbulkedit');?></button>
 			<input id="searchfilters" type="text" style="width:150px;" placeholder="search filters"></input>
@@ -362,14 +355,106 @@ echo '<style>
 			<input id="titlevalue" type="text" class="showorcheckbox"/>
 			</td>
 			<td class="tdcategoryfilter">
-			<?php echo $arrTranslated['category']; ?>: </td><td class="tdcategoryfilter">
-			<div class="category-search-container">
-				<input type="text" id="category-search" placeholder="<?php _e('Search categories...', 'wordpress-advbulkedit'); ?>" style="width:250px;" />
-				<div id="category-search-results" class="search-results-dropdown" style="display:none;"></div>
-				<div id="selected-categories" class="selected-items"></div>
-				<input type="hidden" id="selcategory" value="" />
-			</div>
-			&nbsp;<label><input type="checkbox" id="categoryor" style="width:auto;">AND</input></label>
+			<?php echo $arrTranslated['category']; ?>: </td><td class="tdcategoryfilter"><select id="selcategory" class="makechosen catsel" data-placeholder="<?php echo $arrTranslated['trans_data_placeholder']; ?>" multiple style="width:250px;">
+			 <option value=""></option>
+			<?php
+				$cats = $this->categories;
+				$newcats = array();
+				$cats_asoc = $this->cat_asoc;
+				$depth = array();
+
+			    foreach($cats as $cat)
+				{
+					if($cat->category_parent == 0)
+					{
+						$depth[$cat->term_id] = 0;
+						$newcats[] = $cat;
+					}
+				}
+				foreach($cats as $cat)
+				{
+					if($cat->category_parent == 0) continue;
+					{
+//						if(!isset($options[$cat->category_id]))
+						{
+							if(!isset($depth[$cat->term_id]))
+							{
+								$loop = true;
+								$counter = 0;
+								while($loop && ($counter < 1000))
+								{
+									foreach($cats as $catin)
+									{
+										if($catin->category_parent == 0)
+										   continue;
+										if(isset($depth[$catin->category_parent]))
+										{
+											$newdepth = $depth[$catin->category_parent];
+											$newdepth++;
+											if(!isset($depth[$catin->term_id]))
+											{
+												$depth[$catin->term_id] = $newdepth;
+												for($i = 0; $i < count($newcats); $i++)
+												{
+													$catins = $newcats[$i];
+													if($catins->term_id == $catin->category_parent)
+													{
+														array_splice($newcats, $i+1, 0,array($catin));
+														break;
+													}
+												}
+											}
+
+											if($catin->term_id == $cat->term_id)
+											{
+												$loop = false;
+												break;
+											}
+										}
+									}
+									$counter++;
+								}
+								if(!isset($depth[$cat->term_id]))
+								{
+									$depth[$cat->term_id] = 0;
+									$newcats[] = $cat;
+								}
+							}
+						}
+					}
+					
+				}
+				
+				if(count($newcats) == count($cats))
+				{
+					foreach($newcats as $catin)
+					{
+						$depthstring = '';
+						if(isset($depth[$catin->term_id]))
+						{
+							$depthn = (int)$depth[$catin->term_id];
+							if($depthn < 15)
+							{
+								while($depthn > 0)
+								{
+									$depthstring = $depthstring.'&nbsp;&nbsp;&nbsp;';
+//									$depthstring = $depthstring.'&#09; ';
+									$depthn--;
+								}
+								
+							}
+						}
+						echo '<option value="'.$catin->category_id.'" >'.$depthstring.$catin->category_name.'</option>';
+					}
+				}else
+				{
+					foreach($cats as $catin)
+					{
+						echo '<option value="'.$catin->category_id.'" >'.$catin->category_name.'</option>';
+					}
+				}
+			?>
+			</select>&nbsp;<label><input type="checkbox" id="categoryor" style="width:auto;">AND</input></label>
 			</td></tr>
 			
 			<tr class="showdescriptions">
@@ -396,6 +481,7 @@ echo '<style>
 			</tr>
 			</tbody>
 			</table>
+			<!--</div>-->
 			<br/><br/><br/>
 			<div id="loadsavediv">
 			 <button id="getproducts" class="button" type="button">
@@ -407,17 +493,20 @@ echo '<style>
 				<option value="post" selected><?php _e( 'Posts', 'wordpress-advbulkedit');?></option>
 				<option value="page"><?php _e( 'Pages', 'wordpress-advbulkedit');?></option>
 				<option value="attachment"><?php _e( 'Media', 'wordpress-advbulkedit');?></option>
-				<?php	
-				$args = array('_builtin' => false);
-				$output = 'objects';
-				$post_types = get_post_types( $args, $output );
+				<?php	$args = array(
+		    '_builtin' => false
+		);
 
-				foreach ( $post_types  as $post_type ) {
-				   if($post_type->name === "product" || $post_type->name === "product_variation"|| $post_type->name === "shop_order"|| $post_type->name === "shop_order_refund"|| $post_type->name === "shop_coupon"|| $post_type->name === "shop_webhook")
-				   	  continue;
-				   echo '<option value="' . $post_type->name . '">'.$post_type->label.'</option>';
-				}
-				?>
+		$output = 'objects'; // names or objects
+
+		$post_types = get_post_types( $args, $output );
+
+		foreach ( $post_types  as $post_type ) {
+		   if($post_type->name === "product" || $post_type->name === "product_variation"|| $post_type->name === "shop_order"|| $post_type->name === "shop_order_refund"|| $post_type->name === "shop_coupon"|| $post_type->name === "shop_webhook")
+		   	  continue;
+		   echo '<option value="' . $post_type->name . '">'.$post_type->label.'</option>';
+		}
+		?>
 			</select> &nbsp;&nbsp;
 			  <label><input id="getvariations" type="checkbox" <?php 
 				if(is_array($settings))
@@ -443,7 +532,9 @@ echo '<style>
 			</div>
 			<br /><br />
 			<div style="position: relative;" id="mainbuttons">
+			 <!--<button id="bulkedit">Bulk Edit</button>-->
 			 <input id="settings" class="button-primary-copied" type="button" value="<?php _e( "Show/Hide Columns", "wordpress-advbulkedit"); ?>" />
+			<!-- class="button-primary-copied"-->
 			 <div id="addprodarea">
 				<button id="addprodbut" class="button" type="button">
 				<span class="icon-plus-outline"></span>
@@ -462,26 +553,37 @@ echo '<style>
 			<?php echo $this->mb_ucfirst(__( "delete", 'wordpress-advbulkedit'));?>
 			</button>
 			</div>
-			<input id="selectedit" class="button" type="button" value="<?php _e( "Selection Manager", 'wordpress-advbulkedit');?>" />
+			<input id="selectedit" class="button" type="button" value="<?php
+_e( "Selection Manager", 'wordpress-advbulkedit');
+?>" />
 			<button id="bulkedit" class="button" type="button">
 			<span class="icon-edit"></span>
 			<?php echo _e( "Bulk Edit", 'wordpress-advbulkedit');?>
 			</button>
+			<!--<div style="display: inline-block;"><i class="icon-edit"></i></div>-->
 			 <div id="quicksettingsarea">
-				<input id="quicksettingsbut" class="button" type="button" value="<?php _e( "Quick Settings", 'wordpress-advbulkedit');?>" />
+				<input id="quicksettingsbut" class="button" type="button" value="<?php
+_e( "Quick Settings", 'wordpress-advbulkedit');
+?>" />
 			</div>
-			<div id="bulkedittext" style="display: inline-block;"><?php _e( "Selected rows for bulk editing", 'wordpress-advbulkedit'); ?>:</div><div id="bulkeditinfo"> 0 of 0</div>
+			<div id="bulkedittext" style="display: inline-block;"><?php _e( "Selected rows for bulk editing", 'wordpress-advbulkedit'); ?>:<!--<input id="showselectedbut" class="button" type="button" value="Show Selected" />--></div><div id="bulkeditinfo"> 0 of 0</div>
 			</div>
 			<div id="gridholder">
+				<!--<div style="width:100%;">-->
 				    <div id="myGrid" style="width:100%;height:80vh;"></div>
+				<!--</div>-->
 			</div>
 			<div id="pagingholder" style="position:relative;">
 			<input id="gotopage" class="button" type="button" value="<?php _e( "First", 'wordpress-advbulkedit'); ?>" /><input id="butprevious" class="button" type="button" value="<?php _e( "Previous", 'wordpress-advbulkedit'); ?>" /> <?php _e( "Page", 'wordpress-advbulkedit'); ?>:<input id="gotopagenumber" type="text" value="1" style="width:15px;" readonly/> 	<input id="butnext" class="button" type="button" value="<?php _e( "Next", 'wordpress-advbulkedit'); ?>" /> <?php _e( "Total records", 'wordpress-advbulkedit'); ?>: <div id="totalrecords" style="display:inline-block;padding:0px 6px;"></div><div id="totalpages" style="display:inline-block;"></div><div id="viewingwhich" style="display:inline-block;padding:0px 6px;"></div></div> <br /><br />
 			<div id="revertinfo"><?php _e( "Revert to original value", 'wordpress-advbulkedit'); ?></div> 
+			<!--<input id="revertcell" class="button" type="button" value="<?php _e( "Active Cell", 'wordpress-advbulkedit'); ?>" />
+			<input id="revertrow" class="button" type="button" value="<?php _e( "Active Row", 'wordpress-advbulkedit'); ?>" />-->
 			<input id="revertselected" class="button" type="button" value="<?php _e( "Selected Rows", 'wordpress-advbulkedit'); ?>" />
 			<input id="revertall" class="button" type="button" value="<?php _e( "All Rows", 'wordpress-advbulkedit'); ?>" />
 			<br /><br /><br />
 			
+			
+			<!--<input id="viewdialogbut" class="button" type="button" value="<?php _e( "Load/Save View", 'wordpress-advbulkedit'); ?>" />-->
 			<input id="customfieldsbut" class="button" type="button" value="<?php _e( "Custom Fields", 'wordpress-advbulkedit'); ?>" />
 			<input id="findcustomfieldsbut" class="button" type="button" value="<?php _e( "Find Custom Fields", 'wordpress-advbulkedit'); ?>" />
 			<button id="pluginsettingsbut" class="button" type="button">
@@ -529,7 +631,9 @@ echo '<style>
 					</tr>
 					<tr>
 						<td style="borde:none;display: none; ">
+						<!--	<label><?php _e( 'Use real meta values', 'wordpress-advbulkedit'); ?>: -->
 							<input id="userealmeta" type="checkbox" checked="checked"></input>
+							<!--</label>-->
 						</td>
 					</tr>
 				</table>
@@ -549,9 +653,11 @@ echo '<style>
 			<div id="pluginsettings">
 			<div style="width:100%;height:100%;">
 			<br/>
+			<!--settings-->
 			<div id="pluginsettingstab">
 					<ul>
 					<li><a href="#pluginsettingstab-1"><?php echo $arrTranslated['trans_main_settings']; ?></a></li>
+					<!--<li><a href="#pluginsettingstab-2"><?php echo $arrTranslated['trans_search_settings']; ?></a></li>-->
 					</ul>
 					
 					<div id="pluginsettingstab-1">
@@ -607,6 +713,7 @@ echo '<style>
 						<td width="50%" style="padding-top: 20px;">
 							<label><input id="gettotalnumber" type="checkbox" autocomplete="off"
 							<?php 
+//						  	$settings = get_option('w3exwabe_settings');
 							if(isset($settings['settgetall']))
 							{
 								if($settings['settgetall'] == 1)
@@ -624,6 +731,7 @@ echo '<style>
 						<td width="50%" style="padding-top: 20px;">
 							<label><input id="deleteimages" type="checkbox"
 							<?php 
+//						  	$settings = get_option('w3exwabe_settings');
 							if(isset($settings['deleteimages']))
 							{
 								if($settings['deleteimages'] == 1)
@@ -641,6 +749,7 @@ echo '<style>
 						<td width="50%" style="padding-top: 20px;">
 							<label><input id="deleteinternal" type="checkbox"
 							<?php 
+//						  	$settings = get_option('w3exwabe_settings');
 							if(isset($settings['deleteinternal']))
 							{
 								if($settings['deleteinternal'] == 1)
@@ -720,6 +829,27 @@ echo '<style>
 							</select>
 						</td>
 					</tr>
+					<!--<tr>
+						<td width="50%"  style="padding-top: 25px;">
+							<?php _e( 'Set manual search filters height', 'wordpress-advbulkedit'); ?>
+						</td>
+						<td width="50%"  style="padding-top: 25px;">
+							<input id="searchfiltersheight" type="text" style="width:50px;" 
+							<?php
+								$settings = get_option('w3exwabe_settings');
+								if(!is_array($settings)) $settings = array();
+								if(isset($settings['searchfiltersheight']) && is_numeric($settings['searchfiltersheight']))
+								{		
+									echo 'value="'.$settings['searchfiltersheight'].'"';
+								}else
+								{
+									echo ' value=""';
+								}
+							?>
+							>
+							px
+						</td>
+					</tr>-->
 					<tr>
 						<td width="50%"  style="padding-top: 25px;">
 							<?php _e( 'Set manual table height', 'wordpress-advbulkedit'); ?>
@@ -760,6 +890,42 @@ echo '<style>
 					</tr>
 				</table>
 				</div>
+				<!--<div id="pluginsettingstab-2">-->
+					<!--<table cellpadding="25" cellspacing="0" style="margin: 0 auto;width:100%;">
+					<tr>
+						<td width="45%" style="padding-top: 20px;">
+							<label><input id="showdescriptions" type="checkbox"
+							<?php 
+							$echotext =  "checked=checked";
+							if(isset($settings['showdescriptions']))
+							{
+								if($settings['showdescriptions'] == 0)
+								{
+									$echotext = "";
+								}
+							}
+							echo $echotext;	 ?>
+							><?php _e( 'Content/Excerpt', 'wordpress-advbulkedit'); ?></label>
+						</td>
+						<td width="55%" style="padding-top: 20px;">
+							<label><input id="showidsearch" type="checkbox"
+							<?php 
+							$echotext = "checked=checked";
+							if(isset($settings['showidsearch']))
+							{
+								if($settings['showidsearch'] == 1)
+								{
+									$echotext = "";
+								}
+							}
+							echo $echotext;	 ?>
+							><?php _e( 'ID', 'wordpress-advbulkedit'); ?></label>
+						</td>
+						
+					</tr>
+					</table>-->
+					<!--<br/>
+					</div>-->
 				</div>
 				</div>
 			</div>
@@ -784,8 +950,7 @@ echo '<style>
 				echo 'W3Ex.trans_append = "'.$append.'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_replacetext = "'.$replacetext.'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_ignorecase = "'.$ignorecase.'";'; echo PHP_EOL;
-				echo 'W3Ex.trans_withtext = "'.$withtext.'";'; echo PHP_EOL;
-				echo 'W3Ex.trans_delete = "'.$delete.'";'; echo PHP_EOL;	
+				echo 'W3Ex.trans_withtext = "'.$withtext.'";'; echo PHP_EOL;						echo 'W3Ex.trans_delete = "'.$delete.'";'; echo PHP_EOL;	
 				echo 'W3Ex.trans_incbyvalue = "'.__( "increase by value", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_decbyvalue = "'.__( "decrease by value", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_incbyper = "'.__( "increase by %", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
@@ -798,11 +963,6 @@ echo '<style>
 				echo 'W3Ex.trans_add = "'.__( "add", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_select = "'.__( "Select", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_bulkadd = "'.__( "Bulk Add", 'wordpress-advbulkedit').'";'; echo PHP_EOL;
-				
-				// PERFORMANCE: Note that categories should be loaded via AJAX
-				echo '// Categories will be loaded via AJAX when dropdown is opened'; echo PHP_EOL;
-				echo 'W3Ex.categories_loaded = false;'; echo PHP_EOL;
-				
 				echo "</script>";
 			 ?>
 			<!--//bulk dialog-->
@@ -978,15 +1138,49 @@ echo '<style>
 						
 					</td>
 					<td class="nontextnumbertd">
-						 <!-- PERFORMANCE: Load authors on-demand -->
-						 <select id="bulkpost_author" class="makechosen catselset lazy-load-users" style="width:250px;" data-placeholder="select">
-						 <option value=""><?php _e('Loading...', 'wordpress-advbulkedit'); ?></option>
+						 <select id="bulkpost_author" class="makechosen catselset" style="width:250px;" data-placeholder="select">
+						<?php
+							$blogusers = get_users( array( 'role' => 'editor', 'fields' => array( 'ID', 'display_name' ) ));
+							$blogusers1 = get_users( array( 'role' => 'administrator', 'fields' => array( 'ID', 'display_name' ) ));
+							$blogusers = array_merge($blogusers,$blogusers1);
+							$blogusers1 = get_users( array( 'role' => 'author', 'fields' => array( 'ID', 'display_name' ) ));
+							$blogusers = array_merge($blogusers,$blogusers1);
+							foreach ( $blogusers as $user ) 
+							{
+								echo '<option value="'.$user->ID.'" >'.$user->display_name.'</option>';
+							}
+						?>
 						</select>
 					</td>
 					<td>
 						
 					</td>
 				</tr>
+				
+				<!--<tr data-id="post_type">
+					<td>
+						<?php echo $arrTranslated['post_type'];  ?>
+					</td>
+					<td>
+						 <select id="bulkpost_type" class="bulkselect">
+							<option value="new"><?php echo $setnew; ?></option>
+							<option value="prepend"><?php echo $prepend; ?></option>
+							<option value="append"><?php echo $append; ?></option>
+							<option value="replace"><?php echo $replacetext; ?></option>
+						</select>
+						<label class="labelignorecase" style="display:none;">
+						<input class="inputignorecase" type="checkbox">
+						<?php echo $ignorecase; ?></label>
+					</td>
+					<td class="tdbulkvalue">
+						<div class="imgButton sm mapto">
+					    </div>
+						<input id="bulkpost_typevalue" type="text" placeholder="Skipped (empty)" data-id="post_type" class="bulkvalue"/>
+					</td>
+					<td>
+						<div class="divwithvalue" style="display:none;"><?php echo $withtext; ?> <input class="inputwithvalue" type="text"></div>
+					</td>
+				</tr>-->
 			</table>
 			<br/>
 			</div>
@@ -1002,6 +1196,9 @@ echo '<style>
 					<option value="post_excerpt"><?php _e('excerpt','wordpress-advbulkedit'); ?></option>
 				</select>)
 				<input id="invertselected" class="button" type="button" value="<?php _e( "Invert selected", "woocommerce-advbulkedit"); ?>" />
+				<!--<label><input id="sametitle" type="radio" value="0" name="dupproducts"><?php _e( "same title", 'wordpress-advbulkedit'); ?></label><br/>
+				<label><input id="samedescription" type="radio" value="1" name="dupproducts"><?php _e( "description", 'wordpress-advbulkedit'); ?></label><br/>
+				<label><input id="sameshortdescription" type="radio" value="2" name="dupproducts"><?php _e( "short description", 'wordpress-advbulkedit'); ?></label>-->
 			</div>
 			<hr />
 			<div id="selectdiv">
@@ -1015,6 +1212,7 @@ echo '<style>
 				<option value="all"><?php _e('all of the search criteria','wordpress-advbulkedit'); ?></option>
 			</select>
 			</div>
+			<!--<hr />-->
 			<?php 
 				$t_contains = __( 'contains', 'wordpress-advbulkedit');
 				$t_doesnot = __( 'does not contain', 'wordpress-advbulkedit');
@@ -1027,6 +1225,8 @@ echo '<style>
 				echo 'W3Ex.trans_starts = "'.$t_starts.'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_ends = "'.$t_ends.'";'; echo PHP_EOL;
 				echo 'W3Ex.trans_isempty = "'.$t_isempty.'";'; echo PHP_EOL;
+//				echo 'W3Ex.trans_withtext = "'.$withtext.'";'; echo PHP_EOL;			
+//				echo 'W3Ex.trans_delete = "'.$delete.'";'; echo PHP_EOL;			
 				echo "</script>";
 			 ?>
 			<table class="custstyle-table">
@@ -1225,16 +1425,44 @@ echo '<style>
 						<select class="selectsplitand" disabled="disabled"><option value="and">AND</option><option value="or">OR</option></select>
 					</td>
 				</tr>
+				<!--<tr data-id="post_type">
+					<td>
+						<?php echo $arrTranslated['post_type']; ?>
+					</td>
+					<td>
+						 <select id="selectpost_type" class="selectselect" data-id="post_type">
+							<option value="con"><?php echo $t_contains; ?></option>
+							<option value="notcon"><?php echo $t_doesnot; ?></option>
+							<option value="start"><?php echo $t_starts; ?></option>
+							<option value="end"><?php echo $t_ends; ?></option>
+						</select>
+					</td>
+					<td>
+						<input id="selectpost_typevalue" type="text" placeholder="Skipped (empty)" data-id="post_type" class="selectvalue"/>
+					</td>
+					<td>
+						<label><input data-id="post_type" class="selectifignorecase" type="checkbox"> <?php echo $ignorecase; ?></label>
+					</td>
+					<td>
+						<input data-id="post_type" class="checkboxifspecial" type="checkbox">
+						<select class="selectsplit" disabled="disabled"><option value="split">split commas</option><option value="regexp">reg exp</option></select>
+						<select class="selectsplitand" disabled="disabled"><option value="and">AND</option><option value="or">OR</option></select>
+					</td>
+				</tr>-->
 			</table>
 			<br/>
 			</div>
 			
+		<!--	
+		settings dialog
+		-->
 			<!--//show/hide fields-->
 			<div id="settingsdialog">
 			
 			<table class="settings-table" >
 				<br/>
 			    <input id="searchsettings" type="text" style="width:150px;" placeholder="search"></input>
+			    <!--<button id="searchsettingsreset" class="button"><?php _e( 'show all', 'woocommerce-advbulkedit'); ?></button>-->
 			    <br/>
 				<tr>
 					
@@ -1348,34 +1576,309 @@ echo '<style>
 			</table>
 			<br/>
 			</div>
-			<!--//grouped dialog - PERFORMANCE: Categories loaded on-demand -->
+			<!--//table views-->
+			<!--<div id="dialogtableviews">
+				
+			</div>-->
+			<!--//grouped dialog-->
 			<div id="categoriesdialog">
-				<!-- Categories will be loaded via AJAX when dialog is opened -->
-				<div class='category lazy-load-category-dialog' data-taxonomy="category">
-					<p><?php _e('Loading categories...', 'wordpress-advbulkedit'); ?></p>
+				<div class='category'>
+					<?php
+							$args = array(
+							'descendants_and_self'  => 0,
+							'selected_cats'         => false,
+							'popular_cats'          => false,
+							'walker'                => null,
+							'taxonomy'              => 'category',
+							'checked_ontop'         => true
+						);
+
+						?>
+					<ul class="categorychecklist form-no-clear">
+							<?php wp_terms_checklist( 0, $args ); ?>
+					</ul>
 				</div>
-				<div class='post_tag lazy-load-category-dialog' data-taxonomy="post_tag">
-					<p><?php _e('Loading tags...', 'wordpress-advbulkedit'); ?></p>
+				<div class='post_tag'>
+					<?php
+							$args = array(
+							'descendants_and_self'  => 0,
+							'selected_cats'         => false,
+							'popular_cats'          => false,
+							'walker'                => null,
+							'taxonomy'              => 'post_tag',
+							'checked_ontop'         => true
+						);
+
+						?>
+					<ul class="categorychecklist form-no-clear">
+							<!--uncomment php below for hiearchical tags-->
+							<?php 
+//							$tagcount = wp_count_terms( 'product_tag', $args );
+//							if(!is_wp_error($tagcount) && $tagcount < 2000)
+//							{
+								wp_terms_checklist( 0, $args ); 
+//							}
+							?>
+					</ul>
 				</div>
-				<div class='post_format lazy-load-category-dialog' data-taxonomy="post_format">
-					<p><?php _e('Loading formats...', 'wordpress-advbulkedit'); ?></p>
+				<div class='post_format'>
+					<?php
+							$args = array(
+							'descendants_and_self'  => 0,
+							'selected_cats'         => false,
+							'popular_cats'          => false,
+							'walker'                => null,
+							'taxonomy'              => 'post_format',
+							'checked_ontop'         => true
+						);
+
+						?>
+					<ul class="categorychecklist form-no-clear">
+							<?php 
+								wp_terms_checklist( 0, $args ); 
+							?>
+					</ul>
 				</div>
-				<div class='post_author lazy-load-author-dialog'>
-					<p><?php _e('Loading authors...', 'wordpress-advbulkedit'); ?></p>
+				<div class='post_author'>
+					<ul class="categorychecklist form-no-clear clearothers">
+							<?php 
+							foreach ( $blogusers as $user ) 
+							{
+								echo '<li>
+				    					<label class="selectit">
+									        <input value="'.$user->ID.'" type="checkbox">
+									        '.$user->display_name.'
+									    </label>
+									</li>'
+								;
+							}
+							
+							 ?>
+					</ul>
 				</div>
+				<?php
+					if(is_array($sel_fields) && !empty($sel_fields))
+					{
+						foreach($sel_fields as $keyout => $outarray)
+						{
+							foreach($outarray as $key => $innerarray)
+							{
+								if(isset($innerarray['type']))
+								{
+									if($innerarray['type'] === 'customh')
+									{
+										if(taxonomy_exists($key))
+										{
+											echo '<div class="'.$key.'">';
+											echo PHP_EOL;
+											echo '<ul class="categorychecklist form-no-clear">';
+											$args = array(
+												'descendants_and_self'  => 0,
+												'selected_cats'         => false,
+												'popular_cats'          => false,
+												'walker'                => null,
+												'taxonomy'              => $key,
+												'checked_ontop'         => true
+											);
+											wp_terms_checklist( 0, $args );
+											echo '</ul></div>';
+										}
+									}
+								}
+							}
+						}
+					}
+				?>
+				
 			</div>
-			
 			<?php
-			// PERFORMANCE: Don't load taxonomy terms on page load
-			// They will be loaded via AJAX when needed
-			echo PHP_EOL;
-			echo '<script>';
-			echo '// Taxonomy terms will be loaded via AJAX when needed'; echo PHP_EOL;
-			echo 'W3Ex.taxonomies_loaded = {};'; echo PHP_EOL;
-			echo 'W3Ex.authors_loaded = false;'; echo PHP_EOL;
-			echo "</script>";
+				if(is_array($sel_fields) && !empty($sel_fields))
+				{
+					echo PHP_EOL;
+					echo '<script>';
+					foreach($sel_fields as $keyout => $outarray)
+					{
+						foreach($outarray as $key => $innerarray)
+					{
+						if(isset($innerarray['type']))
+						{
+							if($innerarray['type'] === 'customh' || $innerarray['type'] === 'custom')
+							{
+								if(taxonomy_exists($key))
+								{
+									$name = $key;
+									if(isset($innerarray['name']))
+										$name = $innerarray['name'];
+									$bulktext = '<tr data-id="'.$key.'" class="customfieldtr"><td>'
+									.'<input id="set'.$key.'" type="checkbox" class="bulkset" data-id="'.$key.'" data-type="customtaxh"><label for="set'.$key.'">Set '.$name.'</label></td><td>'.
+						'<select id="bulkadd'.$key.'" class="bulkselect">'.
+							'<option value="new">'.__('set new','wordpress-advbulkedit').'</option>'.
+							'<option value="add">'.__('add','wordpress-advbulkedit').'</option>'.
+							'<option value="remove">'.__('remove','wordpress-advbulkedit').'</option></select></td><td class="nontextnumbertd">'
+									 .'<select id="bulk'.$key.'" class="makechosen catselset" style="width:250px;" data-placeholder="'.str_replace('\\','\\\\',$arrTranslated['trans_data_placeholder']).'" multiple ><option value=""></option>';
+									 $searchtext = ' class="makechosen catselset" style="width:250px;" data-placeholder="'.str_replace('\\','\\\\',$arrTranslated['trans_data_placeholder']).'" multiple ><option value=""></option>';
+									   $argsb = array(
+									    'number'     => 99999,
+									    'orderby'    => 'slug',
+									    'order'      => 'ASC',
+									    'hide_empty' => false,
+									    'include'    => '',
+										'fields'     => 'all'
+									);
+
+									$woo_categoriesb = get_terms($key, $argsb );
+									if(is_wp_error($woo_categoriesb))
+											continue;
+									foreach($woo_categoriesb as $category)
+									{
+									    if(!is_object($category)) continue;
+									    if(!property_exists($category,'name')) continue;
+									    if(!property_exists($category,'term_id')) continue;
+										if(!property_exists($category,'term_taxonomy_id')) continue;
+										$catname = str_replace('"','\"',$category->name);
+										$catname = trim(preg_replace('/\s+/', ' ', $catname));
+									   	$bulktext.= '<option value="'.$category->term_id.'" >'.$catname.'</option>';
+										$searchtext.= '<option value="'.$category->term_taxonomy_id.'" >'.$catname.'</option>';
+									}
+									$bulktext.= '</select></td><td></td></tr>';
+									$searchtext.= '</select>';
+									if($innerarray['type'] === 'customh')
+									{
+										echo "W3Ex['".str_replace("'","\'",$key)."bulk'] = '".str_replace("'","\'",$bulktext)."';";
+									}
+									echo "W3Ex['taxonomyterms".str_replace("'","\'",$key)."'] = '".str_replace("'","\'",$searchtext)."';";
+									echo PHP_EOL;
+								}
+							}
+						}
+					}
+					}
+					
+				}
+				echo '</script>';
+				echo PHP_EOL;
+				echo '<script>';
+				$key = 'post_author';
+				$searchtext = ' class="makechosen catselset" style="width:250px;" data-placeholder="select" multiple >';
+				 
+
+				foreach ( $blogusers as $user ) 
+				{
+					$catname = str_replace('"','\"',$user->display_name);
+					$catname = trim(preg_replace('/\s+/', ' ', $catname));
+					$searchtext.= '<option value="'.$user->ID.'" >'.$catname.'</option>';
+				}
+
+				$searchtext.= '</select>';
+				echo PHP_EOL;
+				echo "W3Ex['taxonomyterms".str_replace("'","\'",$key)."'] = '".str_replace("'","\'",$searchtext)."';";
+				$builtintax = array();
+				$builtintax[] = array('key' => 'post_format','name' => 'Post Format');
+				$builtintax[] = array('key' => 'category','name' => 'Category');
+				$builtintax[] = array('key' => 'post_tag','name' => 'Tags');
+				$categorybulk = '<button class="butnewattribute button newcat" type="button"><span class="icon-plus-outline"></span>new</button>'.
+							'<div class="divnewattribute"> '.
+			   '<input class="inputnewattributename" type="text" placeholder="name" data-slug="category"></input><br/> '.
+			   '<input class="inputnewattributeslug" type="text" placeholder="slug (optional)"></input><br/> '.
+			   '<select class="selectnewcategory" data-placeholder="select parent(optional)" multiple></select><br/>'.
+			   '<button class="butnewattributesave butbulkdialog newcat" style="position:relative;">Ok</button><button class="butnewattributecancel newcat">Cancel</button></div> '.
+			   '<div class="divnewattributeerror"></div>';
+					foreach($builtintax as $inarray)
+					{
+						$bulktext = '<tr data-id="'.$inarray['key'].'" class="customfieldtr"><td>'.
+						'<input id="set'.$inarray['key'].'" type="checkbox" class="bulkset" data-id="'.$inarray['key'].'" data-type="customtaxh"><label for="set'.$inarray['key'].'">Set '.$inarray['name'].'</label></td><td>'.
+			'<select id="bulkadd'.$inarray['key'].'" class="bulkselect">'.
+				'<option value="new">'.__('set new','wordpress-advbulkedit').'</option>'.
+				'<option value="add">'.__('add','wordpress-advbulkedit').'</option>'.
+				'<option value="remove">'.__('remove','wordpress-advbulkedit').'</option></select>'.$categorybulk.'</td><td class="nontextnumbertd">'
+						 .'<select id="bulk'.$inarray['key'].'" class="makechosen catselset" style="width:250px;" data-placeholder="'.str_replace('\\','\\\\',$arrTranslated['trans_data_placeholder']).'" multiple ><option value=""></option>';
+						 $searchtext = ' class="makechosen catselset" style="width:250px;" data-placeholder="'.str_replace('\\','\\\\',$arrTranslated['trans_data_placeholder']).'" multiple ><option value=""></option>';
+						   $argsb = array(
+						    'number'     => 99999,
+						    'orderby'    => 'slug',
+						    'order'      => 'ASC',
+						    'hide_empty' => false,
+						    'include'    => '',
+							'fields'     => 'all'
+						);
+
+						$woo_categoriesb = get_terms($inarray['key'], $argsb );
+						if(is_wp_error($woo_categoriesb))
+								continue;
+						foreach($woo_categoriesb as $category)
+						{
+						    if(!is_object($category)) continue;
+						    if(!property_exists($category,'name')) continue;
+						    if(!property_exists($category,'term_id')) continue;
+							if(!property_exists($category,'term_taxonomy_id')) continue;
+							$catname = str_replace('"','\"',$category->name);
+							$catname = trim(preg_replace('/\s+/', ' ', $catname));
+						   	$bulktext.= '<option value="'.$category->term_id.'" >'.$catname.'</option>';
+							$searchtext.= '<option value="'.$category->term_taxonomy_id.'" >'.$catname.'</option>';
+						}
+						$bulktext.= '</select></td><td></td></tr>';
+						
+						$searchtext.= '</select>';
+//						if($innerarray['type'] === 'customh')
+						{
+							echo "W3Ex['".str_replace("'","\'",$inarray['key'])."bulk'] = '".str_replace("'","\'",$bulktext)."';";
+						}
+						echo "W3Ex['taxonomyterms".str_replace("'","\'",$inarray['key'])."'] = '".str_replace("'","\'",$searchtext)."';";
+						echo PHP_EOL;
+					}
+//				$key = 'post_format';
+//				$searchtext = ' class="makechosen catselset" style="width:250px;" data-placeholder="select" multiple >';
+//				   $argsb = array(
+//				    'number'     => 99999,
+//				    'orderby'    => 'slug',
+//				    'order'      => 'ASC',
+//				    'hide_empty' => false,
+//				    'include'    => '',
+//					'fields'     => 'all'
+//				);
+//
+//				$woo_categoriesb = get_terms($key, $argsb );
+//
+//				foreach($woo_categoriesb as $category)
+//				{
+//				    if(!is_object($category)) continue;
+//				    if(!property_exists($category,'name')) continue;
+//				    if(!property_exists($category,'term_taxonomy_id')) continue;
+//					$catname = str_replace('"','\"',$category->name);
+//					$catname = trim(preg_replace('/\s+/', ' ', $catname));
+//					$searchtext.= '<option value="'.$category->term_taxonomy_id.'" >'.$catname.'</option>';
+//				}
+//				$searchtext.= '</select>';
+//				echo PHP_EOL;
+//				echo "W3Ex['taxonomyterms".str_replace("'","\'",$key)."'] = '".str_replace("'","\'",$searchtext)."';";
+//				echo PHP_EOL;
+//				$key = 'post_tag';
+//				$searchtext = ' class="makechosen catselset" style="width:250px;" data-placeholder="select" multiple >';
+//				   $argsb = array(
+//				    'number'     => 99999,
+//				    'orderby'    => 'slug',
+//				    'order'      => 'ASC',
+//				    'hide_empty' => false,
+//				    'include'    => '',
+//					'fields'     => 'all'
+//				);
+//
+//				$woo_categoriesb = get_terms($key, $argsb );
+//
+//				foreach($woo_categoriesb as $category)
+//				{
+//				    if(!is_object($category)) continue;
+//				    if(!property_exists($category,'name')) continue;
+//				    if(!property_exists($category,'term_taxonomy_id')) continue;
+//					$catname = str_replace('"','\"',$category->name);
+//					$catname = trim(preg_replace('/\s+/', ' ', $catname));
+//					$searchtext.= '<option value="'.$category->term_taxonomy_id.'" >'.$catname.'</option>';
+//				}
+//				$searchtext.= '</select>';
+//				echo PHP_EOL;
+//				echo "W3Ex['taxonomyterms".str_replace("'","\'",$key)."'] = '".str_replace("'","\'",$searchtext)."';";
+				echo '</script>';
 			?>
-			
 			<!--//custom fields dialog-->
 			<div id="customfieldsdialog">
 			<table cellpadding="10" cellspacing="0" id="customfieldstable">
@@ -1441,6 +1944,8 @@ echo '<style>
 		{
 			if($settings['debugmode'] == 1)
 			{
+//				$totalmem = (int) ini_get('memory_limit') ;
+//				echo "Allocated: ".$totalmem."<br/>";
 			}
 		}?>
 		</div>
@@ -1460,167 +1965,17 @@ echo '<style>
 		</div>
 		<div id="editorcontainer">
 			 <?php
-				 $settingsed = array( 'textarea_name' => 'post_text' );
+				 $settingsed = array( 'textarea_name' => 'post_text' );//,'wpautop' => false,'tinymce' => array('forced_root_block' => true,'convert_newlines_to_brs' => false));
 				 wp_editor("", "editorid",$settingsed );
 			 ?>
 			<textarea style="display:none;" name="post_text" id="editorid" rows="3"></textarea>
 			<DIV style='text-align:right' id="savewordpeditor"><BUTTON>Save</BUTTON><BUTTON id="cancelwordpeditor">Cancel</BUTTON></DIV>
 			</div>
 		</div>
-
-<script>
-jQuery(document).ready(function($) {
-    var selectedCategories = {};
-    var searchTimeout;
-    
-    // Category search functionality
-    $('#category-search').on('keyup', function() {
-        var searchTerm = $(this).val();
-        
-        clearTimeout(searchTimeout);
-        
-        if (searchTerm.length < 2) {
-            $('#category-search-results').hide();
-            return;
-        }
-        
-        searchTimeout = setTimeout(function() {
-            searchCategories(searchTerm);
-        }, 300); // Wait 300ms after user stops typing
-    });
-    
-    // Search categories via AJAX
-    function searchCategories(searchTerm) {
-        $('#category-search-results').html('<div class="search-result-item loading">Searching...</div>').show();
-        
-        $.ajax({
-            url: W3ExWABE.ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'wordpress_adv_bulk_edit',
-                nonce: W3ExWABE.nonce,
-                type: 'load_taxonomy_terms',
-                taxonomy: 'category',
-                search: searchTerm,
-                limit: 20
-            },
-            success: function(response) {
-                var result = JSON.parse(response);
-                if (result.success === 'yes' && result.terms && result.terms.length > 0) {
-                    var html = '';
-                    $.each(result.terms, function(i, term) {
-                        // Skip already selected
-                        if (selectedCategories[term.term_taxonomy_id]) {
-                            return;
-                        }
-                        html += '<div class="search-result-item" data-id="' + term.term_taxonomy_id + '" data-name="' + term.name + '">';
-                        html += term.name;
-                        html += '</div>';
-                    });
-                    
-                    if (html === '') {
-                        html = '<div class="search-result-item loading">All matching categories already selected</div>';
-                    }
-                    
-                    $('#category-search-results').html(html);
-                } else {
-                    $('#category-search-results').html('<div class="search-result-item loading">No categories found</div>');
-                }
-            },
-            error: function() {
-                $('#category-search-results').html('<div class="search-result-item loading">Error searching categories</div>');
-            }
-        });
-    }
-    
-    // Click on search result to select
-    $(document).on('click', '.search-result-item:not(.loading)', function() {
-        var id = $(this).data('id');
-        var name = $(this).data('name');
-        
-        addSelectedCategory(id, name);
-        $(this).remove();
-        
-        // Clear search
-        $('#category-search').val('');
-        $('#category-search-results').hide();
-    });
-    
-    // Add selected category
-    function addSelectedCategory(id, name) {
-        if (selectedCategories[id]) {
-            return; // Already selected
-        }
-        
-        selectedCategories[id] = name;
-        
-        var tag = $('<span class="selected-item-tag">' + name + ' <span class="remove-tag" data-id="' + id + '">×</span></span>');
-        $('#selected-categories').append(tag);
-        
-        updateHiddenInput();
-    }
-    
-    // Remove selected category
-    $(document).on('click', '.remove-tag', function() {
-        var id = $(this).data('id');
-        delete selectedCategories[id];
-        $(this).parent().remove();
-        updateHiddenInput();
-    });
-    
-    // Update hidden input with selected IDs
-    function updateHiddenInput() {
-        var ids = Object.keys(selectedCategories).join(',');
-        $('#selcategory').val(ids);
-    }
-    
-    // Hide dropdown when clicking outside
-    $(document).on('click', function(e) {
-        if (!$(e.target).closest('.category-search-container').length) {
-            $('#category-search-results').hide();
-        }
-    });
-    
-    // Load authors when needed (keep this)
-    var authorsLoaded = false;
-    $(document).on('mousedown focus', '#bulkpost_author', function() {
-        if (!authorsLoaded) {
-            authorsLoaded = true;
-            loadUsers('#bulkpost_author');
-        }
-    });
-    
-    function loadUsers(selector) {
-        $.ajax({
-            url: W3ExWABE.ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'wordpress_adv_bulk_edit',
-                nonce: W3ExWABE.nonce,
-                type: 'load_users'
-            },
-            success: function(response) {
-                var result = JSON.parse(response);
-                if (result.success === 'yes' && result.users) {
-                    var $select = $(selector);
-                    $select.empty();
-                    
-                    $.each(result.users, function(i, user) {
-                        $select.append('<option value="' + user.ID + '">' + user.display_name + '</option>');
-                    });
-                    
-                    $select.trigger('chosen:updated');
-                }
-            }
-        });
-    }
-});
-</script>
-
-
 		<?php
 		
 	}
+	
 	
     public function _main()
     {
