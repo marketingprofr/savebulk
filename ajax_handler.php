@@ -4111,6 +4111,149 @@ catch(Exception $e) {
 				$arr['hasnext'] = $hasnext;
 				$arr['isbegin'] = $isbegin;
 			}break;
+			
+			
+			
+case 'searchcategories':
+{
+    $search = isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '';
+    
+    if(strlen($search) < 2) {
+        $arr['success'] = 'no';
+        break;
+    }
+    
+    global $wpdb;
+    
+    // Search categories by name or slug
+    $query = "SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.parent 
+              FROM {$wpdb->prefix}terms as t 
+              INNER JOIN {$wpdb->prefix}term_taxonomy AS tt ON t.term_id = tt.term_id 
+              WHERE tt.taxonomy = 'category' 
+              AND (t.name LIKE %s OR t.slug LIKE %s)
+              ORDER BY t.name ASC 
+              LIMIT 100";
+    
+    $search_term = '%' . $wpdb->esc_like($search) . '%';
+    $results = $wpdb->get_results($wpdb->prepare($query, $search_term, $search_term));
+    
+    $categories = array();
+    $parent_ids = array();
+    
+    // Collect parent IDs
+    foreach($results as $cat) {
+        if($cat->parent > 0) {
+            $parent_ids[] = $cat->parent;
+        }
+    }
+    
+    // Load parent categories if needed
+    if(!empty($parent_ids)) {
+        $parent_ids = array_unique($parent_ids);
+        $parent_query = "SELECT t.term_id, t.name, tt.parent 
+                        FROM {$wpdb->prefix}terms as t 
+                        INNER JOIN {$wpdb->prefix}term_taxonomy AS tt ON t.term_id = tt.term_id 
+                        WHERE tt.taxonomy = 'category' 
+                        AND t.term_id IN (" . implode(',', $parent_ids) . ")";
+        $parents = $wpdb->get_results($parent_query);
+        
+        // Build parent hierarchy
+        $parent_map = array();
+        foreach($parents as $parent) {
+            $parent_map[$parent->term_id] = $parent;
+        }
+    }
+    
+    // Build category array with depth
+    foreach($results as $cat) {
+        $depth = 0;
+        $temp_parent = $cat->parent;
+        
+        while($temp_parent > 0 && $depth < 10) {
+            $depth++;
+            if(isset($parent_map[$temp_parent])) {
+                $temp_parent = $parent_map[$temp_parent]->parent;
+            } else {
+                break;
+            }
+        }
+        
+        $categories[] = array(
+            'id' => $cat->term_taxonomy_id,
+            'name' => $cat->name,
+            'parent' => $cat->parent,
+            'depth' => $depth
+        );
+    }
+    
+    $arr['categories'] = $categories;
+    break;
+}
+
+case 'loadallcategories':
+{
+    global $wpdb;
+    
+    // Load all categories with hierarchy
+    $query = "SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.parent 
+              FROM {$wpdb->prefix}terms as t 
+              INNER JOIN {$wpdb->prefix}term_taxonomy AS tt ON t.term_id = tt.term_id 
+              WHERE tt.taxonomy = 'category' 
+              ORDER BY t.name ASC";
+    
+    $results = $wpdb->get_results($query);
+    
+    // Build hierarchy
+    $categories = array();
+    $temp_cats = array();
+    
+    foreach($results as $cat) {
+        $temp_cats[$cat->term_id] = $cat;
+    }
+    
+    // Calculate depth for each category
+    foreach($results as $cat) {
+        $depth = 0;
+        $temp_parent = $cat->parent;
+        
+        while($temp_parent > 0 && $depth < 15) {
+            $depth++;
+            if(isset($temp_cats[$temp_parent])) {
+                $temp_parent = $temp_cats[$temp_parent]->parent;
+            } else {
+                break;
+            }
+        }
+        
+        $categories[] = array(
+            'id' => $cat->term_taxonomy_id,
+            'name' => $cat->name,
+            'parent' => $cat->parent,
+            'depth' => $depth
+        );
+    }
+    
+    // Sort hierarchically
+    usort($categories, function($a, $b) {
+        // First by parent structure, then by name
+        if($a['parent'] == $b['parent']) {
+            return strcasecmp($a['name'], $b['name']);
+        }
+        return $a['parent'] - $b['parent'];
+    });
+    
+    $arr['categories'] = $categories;
+    break;
+}			
+			
+			
+			
+			
+			
+			
+			
+			
+			
 			case 'getdebuginfo':
 			{
 //				$curr_settings = get_option('w3exwabe_settings');
