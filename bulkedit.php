@@ -126,17 +126,38 @@ class W3ExWordAdvBulkEditView{
 	
 	public function loadAttributes()
 	{
-		//categories
-		$args = array(
-		    'number'     => 99999,
-		    'orderby'    => 'slug',
-		    'order'      => 'ASC',
-		    'hide_empty' => false,
-		    'include'    => '',
-			'fields'     => 'all'
-		);
-		$this->LoadAttributeTerms($args,'category',0,true);
+		// Don't load all categories on init - will load on demand via AJAX
+		$this->categories = array();
+		$this->cat_asoc = array();
 	}
+
+
+	// Add new method to load limited categories for initial display
+	public function loadTopCategories($limit = 100)
+	{
+		global $wpdb;
+		$query = "SELECT t.term_id, t.name, t.slug, tt.term_taxonomy_id, tt.parent, tt.count 
+				  FROM {$wpdb->prefix}terms as t 
+				  INNER JOIN {$wpdb->prefix}term_taxonomy AS tt ON t.term_id = tt.term_id 
+				  WHERE tt.taxonomy = 'category' 
+				  ORDER BY tt.count DESC, t.name ASC 
+				  LIMIT %d";
+		
+		$cats = $wpdb->get_results($wpdb->prepare($query, $limit));
+		
+		foreach($cats as $cat) {
+			if(!is_object($cat)) continue;
+			$category = new stdClass();
+			$category->category_id = $cat->term_taxonomy_id;
+			$category->term_id = $cat->term_id;
+			$category->category_name = $cat->name;
+			$category->category_slug = urldecode($cat->slug);
+			$category->category_parent = $cat->parent;
+			$this->categories[] = $category;
+			$this->cat_asoc[$category->category_id] = $category;
+		}
+	}
+
 
 	public function loadTranslations(&$arr)
 	{
@@ -355,107 +376,25 @@ class W3ExWordAdvBulkEditView{
 			<input id="titlevalue" type="text" class="showorcheckbox"/>
 			</td>
 			<td class="tdcategoryfilter">
-			<?php echo $arrTranslated['category']; ?>: </td><td class="tdcategoryfilter"><select id="selcategory" class="makechosen catsel" data-placeholder="<?php echo $arrTranslated['trans_data_placeholder']; ?>" multiple style="width:250px;">
-			 <option value=""></option>
-			<?php
-				$cats = $this->categories;
-				$newcats = array();
-				$cats_asoc = $this->cat_asoc;
-				$depth = array();
-
-			    foreach($cats as $cat)
-				{
-					if($cat->category_parent == 0)
-					{
-						$depth[$cat->term_id] = 0;
-						$newcats[] = $cat;
+				<?php echo $arrTranslated['category']; ?>: 
+			</td>
+			<td class="tdcategoryfilter">
+				<input type="text" id="selcategory_search" placeholder="<?php _e('Search categories...', 'wordpress-advbulkedit'); ?>" style="width:250px;" />
+				<select id="selcategory" class="makechosen catsel" data-placeholder="<?php echo $arrTranslated['trans_data_placeholder']; ?>" multiple style="width:250px;">
+					<option value=""></option>
+					<?php
+					// Load only top categories initially
+					$this->loadTopCategories(50);
+					foreach($this->categories as $cat) {
+						echo '<option value="'.$cat->category_id.'" data-parent="'.$cat->category_parent.'">'.$cat->category_name.'</option>';
 					}
-				}
-				foreach($cats as $cat)
-				{
-					if($cat->category_parent == 0) continue;
-					{
-//						if(!isset($options[$cat->category_id]))
-						{
-							if(!isset($depth[$cat->term_id]))
-							{
-								$loop = true;
-								$counter = 0;
-								while($loop && ($counter < 1000))
-								{
-									foreach($cats as $catin)
-									{
-										if($catin->category_parent == 0)
-										   continue;
-										if(isset($depth[$catin->category_parent]))
-										{
-											$newdepth = $depth[$catin->category_parent];
-											$newdepth++;
-											if(!isset($depth[$catin->term_id]))
-											{
-												$depth[$catin->term_id] = $newdepth;
-												for($i = 0; $i < count($newcats); $i++)
-												{
-													$catins = $newcats[$i];
-													if($catins->term_id == $catin->category_parent)
-													{
-														array_splice($newcats, $i+1, 0,array($catin));
-														break;
-													}
-												}
-											}
-
-											if($catin->term_id == $cat->term_id)
-											{
-												$loop = false;
-												break;
-											}
-										}
-									}
-									$counter++;
-								}
-								if(!isset($depth[$cat->term_id]))
-								{
-									$depth[$cat->term_id] = 0;
-									$newcats[] = $cat;
-								}
-							}
-						}
-					}
-					
-				}
-				
-				if(count($newcats) == count($cats))
-				{
-					foreach($newcats as $catin)
-					{
-						$depthstring = '';
-						if(isset($depth[$catin->term_id]))
-						{
-							$depthn = (int)$depth[$catin->term_id];
-							if($depthn < 15)
-							{
-								while($depthn > 0)
-								{
-									$depthstring = $depthstring.'&nbsp;&nbsp;&nbsp;';
-//									$depthstring = $depthstring.'&#09; ';
-									$depthn--;
-								}
-								
-							}
-						}
-						echo '<option value="'.$catin->category_id.'" >'.$depthstring.$catin->category_name.'</option>';
-					}
-				}else
-				{
-					foreach($cats as $catin)
-					{
-						echo '<option value="'.$catin->category_id.'" >'.$catin->category_name.'</option>';
-					}
-				}
-			?>
-			</select>&nbsp;<label><input type="checkbox" id="categoryor" style="width:auto;">AND</input></label>
-			</td></tr>
+					?>
+				</select>
+				<div id="category_load_more" style="display:none;">
+					<a href="#" id="load_all_categories"><?php _e('Load all categories', 'wordpress-advbulkedit'); ?></a>
+				</div>
+			</td>
+			</tr>
 			
 			<tr class="showdescriptions">
 				<td><?php echo $arrTranslated['post_content']; ?>: </td>
@@ -1583,21 +1522,14 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 			<!--//grouped dialog-->
 			<div id="categoriesdialog">
 				<div class='category'>
-					<?php
-							$args = array(
-							'descendants_and_self'  => 0,
-							'selected_cats'         => false,
-							'popular_cats'          => false,
-							'walker'                => null,
-							'taxonomy'              => 'category',
-							'checked_ontop'         => true
-						);
-
-						?>
-					<ul class="categorychecklist form-no-clear">
-							<?php wp_terms_checklist( 0, $args ); ?>
+					<div class="category-search-box">
+						<input type="text" class="category-search" placeholder="<?php _e('Search categories...', 'wordpress-advbulkedit'); ?>" />
+					</div>
+					<ul class="categorychecklist form-no-clear" data-taxonomy="category">
+						<li class="loading-placeholder"><?php _e('Type to search categories...', 'wordpress-advbulkedit'); ?></li>
 					</ul>
 				</div>
+				<?php
 				<div class='post_tag'>
 					<?php
 							$args = array(
@@ -1879,6 +1811,110 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 //				echo "W3Ex['taxonomyterms".str_replace("'","\'",$key)."'] = '".str_replace("'","\'",$searchtext)."';";
 				echo '</script>';
 			?>
+			
+				<script>
+				jQuery(document).ready(function($) {
+					var categorySearchTimeout;
+					var allCategoriesLoaded = false;
+					
+					// Category search functionality
+					$('#selcategory_search').on('input', function() {
+						var searchTerm = $(this).val();
+						clearTimeout(categorySearchTimeout);
+						
+						if(searchTerm.length < 2) {
+							return;
+						}
+						
+						categorySearchTimeout = setTimeout(function() {
+							$.ajax({
+								url: W3Ex.ajaxurl,
+								type: "POST",
+								data: {
+									action: "w3exword_ab_check_products",
+									type: "searchcategories",
+									search: searchTerm,
+									nonce: W3Ex.nonce
+								},
+								success: function(response) {
+									if(response.success === 'yes' && response.categories) {
+										var $select = $('#selcategory');
+										var existingValues = $select.val() || [];
+										
+										// Clear non-selected options
+										$select.find('option').each(function() {
+											if($.inArray($(this).val(), existingValues) === -1 && $(this).val() !== '') {
+												$(this).remove();
+											}
+										});
+										
+										// Add new options
+										$.each(response.categories, function(i, cat) {
+											if($select.find('option[value="' + cat.id + '"]').length === 0) {
+												var depth = '';
+												for(var d = 0; d < cat.depth; d++) {
+													depth += '&nbsp;&nbsp;&nbsp;';
+												}
+												$select.append('<option value="' + cat.id + '">' + depth + cat.name + '</option>');
+											}
+										});
+										
+										$select.trigger('chosen:updated');
+									}
+								}
+							});
+						}, 300);
+					});
+					
+					// Load all categories on demand
+					$('#load_all_categories').on('click', function(e) {
+						e.preventDefault();
+						if(allCategoriesLoaded) return;
+						
+						$(this).text('Loading...');
+						
+						$.ajax({
+							url: W3Ex.ajaxurl,
+							type: "POST",
+							data: {
+								action: "w3exword_ab_check_products",
+								type: "loadallcategories",
+								nonce: W3Ex.nonce
+							},
+							success: function(response) {
+								if(response.success === 'yes' && response.categories) {
+									var $select = $('#selcategory');
+									var existingValues = $select.val() || [];
+									
+									$select.empty();
+									$select.append('<option value=""></option>');
+									
+									$.each(response.categories, function(i, cat) {
+										var depth = '';
+										for(var d = 0; d < cat.depth; d++) {
+											depth += '&nbsp;&nbsp;&nbsp;';
+										}
+										$select.append('<option value="' + cat.id + '">' + depth + cat.name + '</option>');
+									});
+									
+									$select.val(existingValues);
+									$select.trigger('chosen:updated');
+									
+									allCategoriesLoaded = true;
+									$('#category_load_more').hide();
+								}
+							}
+						});
+					});
+					
+					// Show load more link if needed
+					if($('#selcategory option').length < 100) {
+						$('#category_load_more').show();
+					}
+				});
+				</script>
+			
+			
 			<!--//custom fields dialog-->
 			<div id="customfieldsdialog">
 			<table cellpadding="10" cellspacing="0" id="customfieldstable">
