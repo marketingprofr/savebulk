@@ -421,6 +421,137 @@ class W3ExWordAdvBulkEditView{
 			</tbody>
 			</table>
 			<!--</div>-->
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			<script>
+				jQuery(document).ready(function($) {
+					var categorySearchTimeout;
+					var allCategoriesLoaded = false;
+					
+					// Category search functionality
+					$('#selcategory_search').on('input', function() {
+						var searchTerm = $(this).val();
+						clearTimeout(categorySearchTimeout);
+						
+						if(searchTerm.length < 2) {
+							return;
+						}
+						
+						categorySearchTimeout = setTimeout(function() {
+							$.ajax({
+								url: W3Ex.ajaxurl,
+								type: "POST",
+								data: {
+									action: "w3exword_ab_check_products",
+									type: "searchcategories",
+									search: searchTerm,
+									nonce: W3Ex.nonce
+								},
+								success: function(response) {
+									if(response.success === 'yes' && response.categories) {
+										var $select = $('#selcategory');
+										var existingValues = $select.val() || [];
+										
+										// Clear non-selected options
+										$select.find('option').each(function() {
+											if($.inArray($(this).val(), existingValues) === -1 && $(this).val() !== '') {
+												$(this).remove();
+											}
+										});
+										
+										// Add new options
+										$.each(response.categories, function(i, cat) {
+											if($select.find('option[value="' + cat.id + '"]').length === 0) {
+												var depth = '';
+												for(var d = 0; d < cat.depth; d++) {
+													depth += '&nbsp;&nbsp;&nbsp;';
+												}
+												$select.append('<option value="' + cat.id + '">' + depth + cat.name + '</option>');
+											}
+										});
+										
+										$select.trigger('chosen:updated');
+									}
+								}
+							});
+						}, 300);
+					});
+					
+					// Load all categories on demand
+					$('#load_all_categories').on('click', function(e) {
+						e.preventDefault();
+						if(allCategoriesLoaded) return;
+						
+						$(this).text('Loading...');
+						
+						$.ajax({
+							url: W3Ex.ajaxurl,
+							type: "POST",
+							data: {
+								action: "w3exword_ab_check_products",
+								type: "loadallcategories",
+								nonce: W3Ex.nonce
+							},
+							success: function(response) {
+								if(response.success === 'yes' && response.categories) {
+									var $select = $('#selcategory');
+									var existingValues = $select.val() || [];
+									
+									$select.empty();
+									$select.append('<option value=""></option>');
+									
+									$.each(response.categories, function(i, cat) {
+										var depth = '';
+										for(var d = 0; d < cat.depth; d++) {
+											depth += '&nbsp;&nbsp;&nbsp;';
+										}
+										$select.append('<option value="' + cat.id + '">' + depth + cat.name + '</option>');
+									});
+									
+									$select.val(existingValues);
+									$select.trigger('chosen:updated');
+									
+									allCategoriesLoaded = true;
+									$('#category_load_more').hide();
+								}
+							}
+						});
+					});
+					
+					// Show load more link if needed
+					if($('#selcategory option').length < 100) {
+						$('#category_load_more').show();
+					}
+				});
+				</script>			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
 			<br/><br/><br/>
 			<div id="loadsavediv">
 			 <button id="getproducts" class="button" type="button">
@@ -1812,107 +1943,7 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 				echo '</script>';
 			?>
 			
-				<script>
-				jQuery(document).ready(function($) {
-					var categorySearchTimeout;
-					var allCategoriesLoaded = false;
-					
-					// Category search functionality
-					$('#selcategory_search').on('input', function() {
-						var searchTerm = $(this).val();
-						clearTimeout(categorySearchTimeout);
-						
-						if(searchTerm.length < 2) {
-							return;
-						}
-						
-						categorySearchTimeout = setTimeout(function() {
-							$.ajax({
-								url: W3Ex.ajaxurl,
-								type: "POST",
-								data: {
-									action: "w3exword_ab_check_products",
-									type: "searchcategories",
-									search: searchTerm,
-									nonce: W3Ex.nonce
-								},
-								success: function(response) {
-									if(response.success === 'yes' && response.categories) {
-										var $select = $('#selcategory');
-										var existingValues = $select.val() || [];
-										
-										// Clear non-selected options
-										$select.find('option').each(function() {
-											if($.inArray($(this).val(), existingValues) === -1 && $(this).val() !== '') {
-												$(this).remove();
-											}
-										});
-										
-										// Add new options
-										$.each(response.categories, function(i, cat) {
-											if($select.find('option[value="' + cat.id + '"]').length === 0) {
-												var depth = '';
-												for(var d = 0; d < cat.depth; d++) {
-													depth += '&nbsp;&nbsp;&nbsp;';
-												}
-												$select.append('<option value="' + cat.id + '">' + depth + cat.name + '</option>');
-											}
-										});
-										
-										$select.trigger('chosen:updated');
-									}
-								}
-							});
-						}, 300);
-					});
-					
-					// Load all categories on demand
-					$('#load_all_categories').on('click', function(e) {
-						e.preventDefault();
-						if(allCategoriesLoaded) return;
-						
-						$(this).text('Loading...');
-						
-						$.ajax({
-							url: W3Ex.ajaxurl,
-							type: "POST",
-							data: {
-								action: "w3exword_ab_check_products",
-								type: "loadallcategories",
-								nonce: W3Ex.nonce
-							},
-							success: function(response) {
-								if(response.success === 'yes' && response.categories) {
-									var $select = $('#selcategory');
-									var existingValues = $select.val() || [];
-									
-									$select.empty();
-									$select.append('<option value=""></option>');
-									
-									$.each(response.categories, function(i, cat) {
-										var depth = '';
-										for(var d = 0; d < cat.depth; d++) {
-											depth += '&nbsp;&nbsp;&nbsp;';
-										}
-										$select.append('<option value="' + cat.id + '">' + depth + cat.name + '</option>');
-									});
-									
-									$select.val(existingValues);
-									$select.trigger('chosen:updated');
-									
-									allCategoriesLoaded = true;
-									$('#category_load_more').hide();
-								}
-							}
-						});
-					});
-					
-					// Show load more link if needed
-					if($('#selcategory option').length < 100) {
-						$('#category_load_more').show();
-					}
-				});
-				</script>
+			
 			
 			
 			<!--//custom fields dialog-->
