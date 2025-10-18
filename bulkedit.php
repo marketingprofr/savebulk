@@ -1660,7 +1660,7 @@ _e( "Quick Settings", 'wordpress-advbulkedit');
 						<li class="loading-placeholder"><?php _e('Type to search categories...', 'wordpress-advbulkedit'); ?></li>
 					</ul>
 				</div>
-				<?php
+
 				<div class='post_tag'>
 					<?php
 							$args = array(
